@@ -1,7 +1,23 @@
 from beanie import Document
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, EmailStr
 from typing import List, Optional, Dict, Any
 from datetime import datetime
+
+# User model for authentication
+class User(Document):
+    """Store user profile and authentication data"""
+    email: EmailStr
+    hashed_password: str
+    full_name: Optional[str] = None
+    disabled: bool = False
+    created_at: datetime = Field(default_factory=datetime.utcnow)
+    last_login: Optional[datetime] = None
+    
+    class Settings:
+        name = "users"
+        indexes = [
+            "email",  # Index for faster queries by email
+        ]
 
 # Basic models structure - this will be populated with models from any existing implementation
 # or left as a template for future models

@@ -3,11 +3,16 @@ from beanie import init_beanie
 import logging
 import os
 from typing import List, Optional, Dict, Any
+from datetime import datetime
+from passlib.context import CryptContext
 
-from backend.src.database.models import Transcript, FlaggedConcept, OrganizedNotes, OtherConcept
+from backend.src.database.models import Transcript, FlaggedConcept, OrganizedNotes, OtherConcept, User
 
 # Set up logging
 logger = logging.getLogger(__name__)
+
+# Set up password hashing context
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 async def init_db():
     """Initialize database connection and register models with Beanie"""
@@ -23,6 +28,7 @@ async def init_db():
         await init_beanie(
             database=client[db_name],
             document_models=[
+                User,
                 Transcript,
                 FlaggedConcept,
                 OrganizedNotes,
@@ -36,6 +42,67 @@ async def init_db():
     except Exception as e:
         logger.error(f"Failed to initialize database: {str(e)}")
         return False
+
+# Authentication helpers
+def hash_password(password: str) -> str:
+    """Hash a password for storing."""
+    return pwd_context.hash(password)
+
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Verify a stored password against one provided by user"""
+    return pwd_context.verify(plain_password, hashed_password)
+
+# User operations
+async def create_user(email: str, password: str, full_name: Optional[str] = None) -> Optional[User]:
+    """
+    Create a new user with hashed password
+    """
+    try:
+        # Check if user already exists
+        existing_user = await User.find_one({"email": email})
+        if existing_user:
+            logger.warning(f"User with email {email} already exists")
+            return None
+            
+        # Create new user with hashed password
+        user = User(
+            email=email,
+            hashed_password=hash_password(password),
+            full_name=full_name
+        )
+        await user.insert()
+        return user
+    except Exception as e:
+        logger.error(f"Error creating user: {str(e)}")
+        return None
+
+async def authenticate_user(email: str, password: str) -> Optional[User]:
+    """
+    Authenticate a user with email and password
+    """
+    try:
+        user = await User.find_one({"email": email})
+        if not user:
+            return None
+        if not verify_password(password, user.hashed_password):
+            return None
+            
+        # Update last login time
+        user.last_login = datetime.utcnow()
+        await user.save()
+        
+        return user
+    except Exception as e:
+        logger.error(f"Authentication error: {str(e)}")
+        return None
+
+async def get_user(user_id: str) -> Optional[User]:
+    """Get user by ID"""
+    return await User.get(user_id)
+
+async def get_user_by_email(email: str) -> Optional[User]:
+    """Get user by email"""
+    return await User.find_one({"email": email})
 
 # Transcript operations
 async def save_transcript(user_id: Optional[str], lecture_id: Optional[str], text: str) -> str:
