@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from "react";
 
 interface DeepgramOptions {
   apiUrl?: string;
+  userId?: string;
+  lectureId?: string;
   onTranscript?: (transcript: string, isFinal: boolean) => void;
   onConcepts?: (concepts: any[]) => void;
   onError?: (error: any) => void;
@@ -11,6 +13,8 @@ interface DeepgramOptions {
 export const useDeepgramAudio = (options: DeepgramOptions = {}) => {
   const {
     apiUrl = "ws://localhost:8000/ws/audio-to-text",
+    userId,
+    lectureId,
     onTranscript,
     onConcepts,
     onError,
@@ -46,6 +50,14 @@ export const useDeepgramAudio = (options: DeepgramOptions = {}) => {
         console.log("WebSocket connection established");
         setIsConnected(true);
         setError(null);
+
+        // Send initialization data with user and lecture info
+        socket.send(
+          JSON.stringify({
+            user_id: userId,
+            lecture_id: lectureId,
+          })
+        );
       };
 
       socket.onmessage = (event) => {
@@ -112,7 +124,7 @@ export const useDeepgramAudio = (options: DeepgramOptions = {}) => {
       if (onError) onError(err);
       return false;
     }
-  }, [apiUrl, onTranscript, onConcepts, onError, onConnect]);
+  }, [apiUrl, userId, lectureId, onTranscript, onConcepts, onError, onConnect]);
 
   // Start recording
   const startRecording = useCallback(async () => {

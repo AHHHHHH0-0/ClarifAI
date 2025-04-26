@@ -8,6 +8,11 @@ from pydantic import BaseModel
 from dotenv import load_dotenv
 import websockets
 from uuid import uuid4
+from datetime import datetime
+from bson.objectid import ObjectId
+
+# DB connection
+from database import get_database
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -43,6 +48,82 @@ class TranscriptionService:
         self.transcription_buffer = ""
         self.ws_connections: Dict[str, Any] = {}
         self.callbacks: Dict[str, List[Callable]] = {}
+    
+    async def _store_session(self, session_id: str, user_id: str = None, lecture_id: str = None):
+        """
+        Store session information in MongoDB.
+        
+        Args:
+            session_id: Unique session identifier
+            user_id: User ID (if authenticated)
+            lecture_id: Optional lecture ID if associated with a specific lecture
+        """
+        try:
+            # Convert string IDs to ObjectId if provided
+            user_id_obj = ObjectId(user_id) if user_id else None
+            lecture_id_obj = ObjectId(lecture_id) if lecture_id else None
+            
+            # Get database connection
+            db = await get_database()
+            
+            # Create session document
+            session_doc = {
+                "sessionId": session_id,
+                "userId": user_id_obj,
+                "lectureId": lecture_id_obj,
+                "status": "active",
+                "lastActivityTimestamp": datetime.utcnow()
+            }
+            
+            # Store in MongoDB
+            await db.transcription_sessions.insert_one(session_doc)
+            logger.info(f"Session {session_id} stored in database")
+            
+        except Exception as e:
+            logger.error(f"Failed to store session in database: {str(e)}")
+    
+    async def _update_session_activity(self, session_id: str):
+        """
+        Update session's last activity timestamp and ensure status is active.
+        
+        Args:
+            session_id: Session identifier
+        """
+        try:
+            db = await get_database()
+            await db.transcription_sessions.update_one(
+                {"sessionId": session_id},
+                {
+                    "$set": {
+                        "lastActivityTimestamp": datetime.utcnow(),
+                        "status": "active"
+                    }
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to update session activity: {str(e)}")
+    
+    async def _mark_session_inactive(self, session_id: str):
+        """
+        Mark session as inactive in the database.
+        
+        Args:
+            session_id: Session identifier
+        """
+        try:
+            db = await get_database()
+            await db.transcription_sessions.update_one(
+                {"sessionId": session_id},
+                {
+                    "$set": {
+                        "status": "inactive",
+                        "lastActivityTimestamp": datetime.utcnow()
+                    }
+                }
+            )
+            logger.info(f"Session {session_id} marked as inactive")
+        except Exception as e:
+            logger.error(f"Failed to mark session as inactive: {str(e)}")
     
     async def _connect_to_deepgram(self, session_id: str):
         """
@@ -176,11 +257,13 @@ class TranscriptionService:
                 "session_id": session_id
             }
     
-    async def start_transcription_session(self, callback: Optional[Callable] = None) -> str:
+    async def start_transcription_session(self, user_id: str = None, lecture_id: str = None, callback: Optional[Callable] = None) -> str:
         """
         Start a new transcription session.
         
         Args:
+            user_id: Optional user identifier
+            lecture_id: Optional lecture identifier
             callback: Function to call with transcription results
             
         Returns:
@@ -197,15 +280,20 @@ class TranscriptionService:
         # Connect to Deepgram
         await self._connect_to_deepgram(session_id)
         
+        # Store session in MongoDB
+        await self._store_session(session_id, user_id, lecture_id)
+        
         return session_id
     
-    async def transcribe_audio(self, audio_data: bytes, session_id: Optional[str] = None, is_base64: bool = True) -> Dict[str, Any]:
+    async def transcribe_audio(self, audio_data: bytes, session_id: Optional[str] = None, user_id: str = None, lecture_id: str = None, is_base64: bool = True) -> Dict[str, Any]:
         """
         Send audio data to Deepgram for transcription.
         
         Args:
             audio_data: Raw audio data or base64-encoded audio
             session_id: Session identifier (creates a new one if not provided)
+            user_id: Optional user identifier
+            lecture_id: Optional lecture identifier
             is_base64: Whether the audio_data is base64 encoded
             
         Returns:
@@ -222,7 +310,10 @@ class TranscriptionService:
             
             # Create a new session if not provided
             if not session_id or session_id not in self.ws_connections:
-                session_id = await self.start_transcription_session()
+                session_id = await self.start_transcription_session(user_id, lecture_id)
+            else:
+                # Update session activity timestamp
+                await self._update_session_activity(session_id)
             
             # Get the connection
             conn_info = self.ws_connections.get(session_id)
@@ -267,6 +358,9 @@ class TranscriptionService:
             # Remove connection
             self.ws_connections.pop(session_id, None)
             self.callbacks.pop(session_id, None)
+            
+            # Mark session as inactive in database
+            await self._mark_session_inactive(session_id)
             
             return {
                 "status": "success",

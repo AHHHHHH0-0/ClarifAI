@@ -82,32 +82,46 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
     session_id = None
     
-    # Define callback function to forward transcription to client
-    async def transcription_callback(result: Dict[str, Any]):
-        if websocket.client_state.CONNECTED:
-            try:
-                # If this is a final result with a transcript, also process with Gemini
-                if result.get("is_final", False) and result.get("full_transcript"):
-                    full_transcript = result.get("full_transcript")
-                    
-                    # Process with Gemini service
-                    gemini_result = await gemini_service.process_audio_transcript(
-                        full_transcript,
-                        ""  # No previous transcript needed as service manages the buffer
-                    )
-                    
-                    # Add the processed concepts to the result
-                    result["concepts"] = gemini_result.get("concepts", [])
-                    result["current_concept"] = gemini_result.get("current_concept")
-                
-                # Send result to client
-                await websocket.send_json(result)
-            except Exception as e:
-                logger.error(f"Error in transcription callback: {str(e)}")
-    
     try:
+        # First, get initialization parameters
+        init_data = await websocket.receive_text()
+        params = json.loads(init_data)
+        
+        # Extract user_id and lecture_id if provided
+        user_id = params.get("user_id")
+        lecture_id = params.get("lecture_id")
+        
+        logger.info(f"Initializing audio transcription for user_id: {user_id}, lecture_id: {lecture_id}")
+        
+        # Define callback function to forward transcription to client
+        async def transcription_callback(result: Dict[str, Any]):
+            if websocket.client_state.CONNECTED:
+                try:
+                    # If this is a final result with a transcript, also process with Gemini
+                    if result.get("is_final", False) and result.get("full_transcript"):
+                        full_transcript = result.get("full_transcript")
+                        
+                        # Process with Gemini service
+                        gemini_result = await gemini_service.process_audio_transcript(
+                            full_transcript,
+                            ""  # No previous transcript needed as service manages the buffer
+                        )
+                        
+                        # Add the processed concepts to the result
+                        result["concepts"] = gemini_result.get("concepts", [])
+                        result["current_concept"] = gemini_result.get("current_concept")
+                    
+                    # Send result to client
+                    await websocket.send_json(result)
+                except Exception as e:
+                    logger.error(f"Error in transcription callback: {str(e)}")
+        
         # Start a new transcription session with the callback
-        session_id = await transcription_service.start_transcription_session(transcription_callback)
+        session_id = await transcription_service.start_transcription_session(
+            user_id=user_id,
+            lecture_id=lecture_id,
+            callback=transcription_callback
+        )
         
         # Store the WebSocket connection for reference
         active_connections[session_id] = websocket
@@ -136,7 +150,12 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
                 continue
             
             # Send to Deepgram (response comes through the callback)
-            await transcription_service.transcribe_audio(base64_audio, session_id)
+            await transcription_service.transcribe_audio(
+                base64_audio, 
+                session_id,
+                user_id, 
+                lecture_id
+            )
             
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for session {session_id}")

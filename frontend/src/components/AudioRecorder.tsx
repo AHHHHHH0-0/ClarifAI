@@ -8,7 +8,12 @@ interface Concept {
   is_current: boolean;
 }
 
-const AudioRecorder: React.FC = () => {
+interface AudioRecorderProps {
+  userId?: string;
+  lectureId?: string;
+}
+
+const AudioRecorder: React.FC<AudioRecorderProps> = ({ userId, lectureId }) => {
   const [transcriptHistory, setTranscriptHistory] = useState<string[]>([]);
   const [conceptList, setConceptList] = useState<Concept[]>([]);
   const [currentConceptName, setCurrentConceptName] = useState<string | null>(
@@ -25,7 +30,10 @@ const AudioRecorder: React.FC = () => {
     concepts,
     currentConcept,
     error,
+    sessionId,
   } = useDeepgramAudio({
+    userId,
+    lectureId,
     onTranscript: (newTranscript, isFinal) => {
       if (isFinal && newTranscript) {
         setTranscriptHistory((prev) => [...prev, newTranscript]);
@@ -85,6 +93,13 @@ const AudioRecorder: React.FC = () => {
   return (
     <div className="p-4 max-w-4xl mx-auto">
       <h1 className="text-2xl font-bold mb-4">ClarifAI Audio Recorder</h1>
+
+      {/* User info and session */}
+      <div className="mb-4 text-sm text-gray-600">
+        {userId && <div>User ID: {userId}</div>}
+        {lectureId && <div>Lecture ID: {lectureId}</div>}
+        {sessionId && <div>Session ID: {sessionId}</div>}
+      </div>
 
       {/* Connection status */}
       <div className="mb-4">
