@@ -10,6 +10,7 @@ from fastapi.websockets import WebSocket
 from httpx import AsyncClient
 import asyncio
 from dotenv import load_dotenv
+from fastapi import WebSocketDisconnect
 
 # Load environment variables from .env files
 load_dotenv(os.path.join("backend", "src", ".env"))
@@ -125,9 +126,10 @@ async def test_process_audio_websocket(mock_gemini_service):
     # Create a mock WebSocket
     mock_websocket = AsyncMock(spec=WebSocket)
     mock_websocket.accept = AsyncMock()
-    mock_websocket.receive_text = AsyncMock(return_value=json.dumps({
-        "transcript": "This is a test transcript"
-    }))
+    mock_websocket.receive_text = AsyncMock(side_effect=[
+        json.dumps({"transcript": "This is a test transcript"}),
+        WebSocketDisconnect()
+    ])
     mock_websocket.send_json = AsyncMock()
     mock_websocket.close = AsyncMock()
     # Mock the client_state properly
@@ -143,7 +145,8 @@ async def test_process_audio_websocket(mock_gemini_service):
     
     # Verify the right methods were called
     mock_websocket.accept.assert_called_once()
-    mock_websocket.receive_text.assert_called_once()
+    assert mock_websocket.receive_text.call_count == 2, \
+        f"Expected receive_text called twice, got {mock_websocket.receive_text.call_count}"
     mock_gemini_service.process_audio_transcript.assert_called_once_with(
         "This is a test transcript", ""
     )
@@ -161,10 +164,10 @@ async def test_flag_concept_websocket(mock_gemini_service):
     # Create a mock WebSocket
     mock_websocket = AsyncMock(spec=WebSocket)
     mock_websocket.accept = AsyncMock()
-    mock_websocket.receive_text = AsyncMock(return_value=json.dumps({
-        "concept_name": "Test Concept",
-        "context": "This is the context for the test concept"
-    }))
+    mock_websocket.receive_text = AsyncMock(side_effect=[
+        json.dumps({"concept_name": "Test Concept", "context": "This is the context for the test concept"}),
+        WebSocketDisconnect()
+    ])
     mock_websocket.send_json = AsyncMock()
     mock_websocket.close = AsyncMock()
     # Mock the client_state properly
@@ -180,7 +183,8 @@ async def test_flag_concept_websocket(mock_gemini_service):
     
     # Verify the right methods were called
     mock_websocket.accept.assert_called_once()
-    mock_websocket.receive_text.assert_called_once()
+    assert mock_websocket.receive_text.call_count == 2, \
+        f"Expected receive_text called twice, got {mock_websocket.receive_text.call_count}"
     mock_gemini_service.explain_concept.assert_called_once_with(
         "Test Concept", "This is the context for the test concept"
     )
@@ -226,10 +230,10 @@ async def test_evaluate_understanding_websocket(mock_gemini_service):
     # Create a mock WebSocket
     mock_websocket = AsyncMock(spec=WebSocket)
     mock_websocket.accept = AsyncMock()
-    mock_websocket.receive_text = AsyncMock(return_value=json.dumps({
-        "lecture_transcript": "This is the lecture transcript",
-        "user_explanation": "This is the user's explanation"
-    }))
+    mock_websocket.receive_text = AsyncMock(side_effect=[
+        json.dumps({"lecture_transcript": "This is the lecture transcript", "user_explanation": "This is the user's explanation"}),
+        WebSocketDisconnect()
+    ])
     mock_websocket.send_json = AsyncMock()
     mock_websocket.close = AsyncMock()
     # Mock the client_state properly
@@ -245,7 +249,8 @@ async def test_evaluate_understanding_websocket(mock_gemini_service):
     
     # Verify the right methods were called
     mock_websocket.accept.assert_called_once()
-    mock_websocket.receive_text.assert_called_once()
+    assert mock_websocket.receive_text.call_count == 2, \
+        f"Expected receive_text called twice, got {mock_websocket.receive_text.call_count}"
     mock_gemini_service.evaluate_understanding.assert_called_once_with(
         "This is the lecture transcript", "This is the user's explanation"
     )
