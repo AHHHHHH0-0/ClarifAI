@@ -30,95 +30,21 @@ gemini_service = GeminiService()
 transcription_service = create_transcription_service()
 tts_service = create_tts_service()
 
-async def process_audio_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
-    
-    previous_transcript = ""
-    user_id = None
-    lecture_id = None
-    transcript_id = None
-    
-    try:
-        # Get initial data for identifying the user/lecture
-        init_data = await websocket.receive_text()
-        params = json.loads(init_data)
-        user_id = params.get("user_id")
-        lecture_id = params.get("lecture_id")
-        
-        while True:
-            # Receive transcript from the client
-            data = await websocket.receive_text()
-            transcript_data = json.loads(data)
-            transcript: str = transcript_data.get("transcript", "")
-            
-            # Process the transcript with incremental support
-            result: Dict[str, Any] = await gemini_service.process_audio_transcript(
-                transcript, 
-                previous_transcript
-            )
-            
-            # Update previous transcript for next iteration
-            previous_transcript = transcript
-            
-            # Send the processed result back
-            await websocket.send_json(result)
-            
-            # If this is a final transcript, save it to the database
-            if transcript_data.get("is_final", False):
-                # Save the raw transcript
-                transcript_id = await save_transcript(user_id, lecture_id, transcript)
-                
-                # Save any detected concepts that aren't flagged
-                if "concepts" in result:
-                    for concept in result["concepts"]:
-                        # Skip the current concept as it might be flagged
-                        if concept.get("is_current", False):
-                            continue
-                            
-                        await save_other_concept(
-                            concept_name=concept.get("concept_name", "Unknown Concept"),
-                            text_snippet=concept.get("text_snippet", ""),
-                            difficulty_level=concept.get("difficulty_level", 1),
-                            start_position=concept.get("start_position", 0),
-                            end_position=concept.get("end_position", 0),
-                            transcript_id=transcript_id,
-                            lecture_id=lecture_id
-                        )
-                
-                # Generate and save organized notes
-                # Call Gemini to create organized notes
-                organized_content = await gemini_service.generate_organized_notes(transcript)
-                
-                # Save the organized notes
-                await save_organized_notes(
-                    user_id=user_id,
-                    lecture_id=lecture_id,
-                    title=organized_content.get("title", "Untitled Lecture"),
-                    content=organized_content.get("content", ""),
-                    raw_transcript=transcript
-                )
-            
-    except WebSocketDisconnect:
-        await websocket.close()
-    except Exception as e:
-        logger.error(f"Error in process-audio: {str(e)}")
-        await websocket.send_json({
-            "status": "error",
-            "message": str(e)
-        })
-    finally:
-        if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.close()
-
 async def audio_to_text_websocket(websocket: WebSocket) -> None:
     """
     WebSocket endpoint to receive raw audio data and convert it to text using Deepgram.
+    Can be used in three modes:
+    1. Full audio streaming with concept detection (mode="lecture")
+    2. Processing existing transcripts (mode="process")
+    3. Audio for teach-to-learn mode (mode="teach") - handled separately
     """
     await websocket.accept()
     session_id = None
     user_id = None
     lecture_id = None
     transcript_id = None
+    previous_transcript = ""
+    mode = "lecture"  # Default mode
     
     try:
         # First, get initialization parameters
@@ -128,32 +54,38 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
         # Extract user_id and lecture_id if provided
         user_id = params.get("user_id")
         lecture_id = params.get("lecture_id")
+        mode = params.get("mode", "lecture")  # Get mode from request
         
-        logger.info(f"Initializing audio transcription for user_id: {user_id}, lecture_id: {lecture_id}")
+        logger.info(f"Initializing audio transcription for user_id: {user_id}, lecture_id: {lecture_id}, mode: {mode}")
         
-        # Define callback function to forward transcription to client
-        async def transcription_callback(result: Dict[str, Any]):
-            if websocket.client_state == WebSocketState.CONNECTED:
-                try:
-                    # If this is a final result with a transcript, also process with Gemini
-                    if result.get("is_final", False) and result.get("full_transcript"):
-                        full_transcript = result.get("full_transcript")
-                        
-                        # Save the transcript to the database
-                        transcript_id = await save_transcript(user_id, lecture_id, full_transcript)
-                        
-                        # Process with Gemini service
-                        gemini_result = await gemini_service.process_audio_transcript(
-                            full_transcript,
-                            ""  # No previous transcript needed as service manages the buffer
-                        )
-                        
-                        # Add the processed concepts to the result
-                        result["concepts"] = gemini_result.get("concepts", [])
-                        result["current_concept"] = gemini_result.get("current_concept")
-                        
-                        # Save detected concepts that aren't flagged
-                        for concept in gemini_result.get("concepts", []):
+        # If we're just processing existing transcripts (not streaming audio)
+        if mode == "process":
+            while True:
+                # Receive transcript from the client
+                data = await websocket.receive_text()
+                transcript_data = json.loads(data)
+                transcript: str = transcript_data.get("transcript", "")
+                
+                # Process the transcript with incremental support
+                result: Dict[str, Any] = await gemini_service.process_audio_transcript(
+                    transcript, 
+                    previous_transcript
+                )
+                
+                # Update previous transcript for next iteration
+                previous_transcript = transcript
+                
+                # Send the processed result back
+                await websocket.send_json(result)
+                
+                # If this is a final transcript, save it to the database
+                if transcript_data.get("is_final", False):
+                    # Save the raw transcript
+                    transcript_id = await save_transcript(user_id, lecture_id, transcript)
+                    
+                    # Save any detected concepts that aren't flagged
+                    if "concepts" in result:
+                        for concept in result["concepts"]:
                             # Skip the current concept as it might be flagged
                             if concept.get("is_current", False):
                                 continue
@@ -167,65 +99,115 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
                                 transcript_id=transcript_id,
                                 lecture_id=lecture_id
                             )
-                        
-                        # Generate and save organized notes
-                        organized_content = await gemini_service.generate_organized_notes(full_transcript)
-                        
-                        # Save the organized notes
-                        await save_organized_notes(
-                            user_id=user_id,
-                            lecture_id=lecture_id,
-                            title=organized_content.get("title", "Untitled Lecture"),
-                            content=organized_content.get("content", ""),
-                            raw_transcript=full_transcript
-                        )
                     
-                    # Send result to client
-                    await websocket.send_json(result)
-                except Exception as e:
-                    logger.error(f"Error in transcription callback: {str(e)}")
-        
-        # Start a new transcription session with the callback
-        session_id = await transcription_service.start_transcription_session(
-            user_id=user_id,
-            lecture_id=lecture_id,
-            callback=transcription_callback
-        )
-        
-        # Store the WebSocket connection for reference
-        active_connections[session_id] = websocket
-        
-        # Send initial confirmation
-        await websocket.send_json({
-            "status": "connected",
-            "session_id": session_id,
-            "message": "Connected to Deepgram streaming API"
-        })
-        
-        # Listen for audio chunks from the client
-        while True:
-            # Receive audio chunk from the client
-            data = await websocket.receive_text()
-            audio_data = json.loads(data)
+                    # Generate and save organized notes
+                    # Call Gemini to create organized notes
+                    organized_content = await gemini_service.generate_organized_notes(transcript)
+                    
+                    # Save the organized notes
+                    await save_organized_notes(
+                        user_id=user_id,
+                        lecture_id=lecture_id,
+                        title=organized_content.get("title", "Untitled Lecture"),
+                        content=organized_content.get("content", ""),
+                        raw_transcript=transcript
+                    )
+        else:  # Normal audio streaming mode (lecture)
+            # Define callback function to forward transcription to client
+            async def transcription_callback(result: Dict[str, Any]):
+                if websocket.client_state == WebSocketState.CONNECTED:
+                    try:
+                        # If this is a final result with a transcript, also process with Gemini
+                        if result.get("is_final", False) and result.get("full_transcript"):
+                            full_transcript = result.get("full_transcript")
+                            
+                            # Save the transcript to the database
+                            transcript_id = await save_transcript(user_id, lecture_id, full_transcript)
+                            
+                            # Process with Gemini service
+                            gemini_result = await gemini_service.process_audio_transcript(
+                                full_transcript,
+                                ""  # No previous transcript needed as service manages the buffer
+                            )
+                            
+                            # Add the processed concepts to the result
+                            result["concepts"] = gemini_result.get("concepts", [])
+                            result["current_concept"] = gemini_result.get("current_concept")
+                            
+                            # Save detected concepts that aren't flagged
+                            for concept in gemini_result.get("concepts", []):
+                                # Skip the current concept as it might be flagged
+                                if concept.get("is_current", False):
+                                    continue
+                                    
+                                await save_other_concept(
+                                    concept_name=concept.get("concept_name", "Unknown Concept"),
+                                    text_snippet=concept.get("text_snippet", ""),
+                                    difficulty_level=concept.get("difficulty_level", 1),
+                                    start_position=concept.get("start_position", 0),
+                                    end_position=concept.get("end_position", 0),
+                                    transcript_id=transcript_id,
+                                    lecture_id=lecture_id
+                                )
+                            
+                            # Generate and save organized notes
+                            organized_content = await gemini_service.generate_organized_notes(full_transcript)
+                            
+                            # Save the organized notes
+                            await save_organized_notes(
+                                user_id=user_id,
+                                lecture_id=lecture_id,
+                                title=organized_content.get("title", "Untitled Lecture"),
+                                content=organized_content.get("content", ""),
+                                raw_transcript=full_transcript
+                            )
+                        
+                        # Send result to client
+                        await websocket.send_json(result)
+                    except Exception as e:
+                        logger.error(f"Error in transcription callback: {str(e)}")
             
-            # Extract base64 audio
-            base64_audio = audio_data.get("audio", "")
-            if not base64_audio:
-                await websocket.send_json({
-                    "status": "error",
-                    "message": "No audio data provided",
-                    "session_id": session_id
-                })
-                continue
-            
-            # Send to Deepgram (response comes through the callback)
-            await transcription_service.transcribe_audio(
-                base64_audio, 
-                session_id,
-                user_id, 
-                lecture_id
+            # Start a new transcription session with the callback
+            session_id = await transcription_service.start_transcription_session(
+                user_id=user_id,
+                lecture_id=lecture_id,
+                callback=transcription_callback
             )
             
+            # Store the WebSocket connection for reference
+            active_connections[session_id] = websocket
+            
+            # Send initial confirmation
+            await websocket.send_json({
+                "status": "connected",
+                "session_id": session_id,
+                "message": "Connected to Deepgram streaming API"
+            })
+            
+            # Listen for audio chunks from the client
+            while True:
+                # Receive audio chunk from the client
+                data = await websocket.receive_text()
+                audio_data = json.loads(data)
+                
+                # Extract base64 audio
+                base64_audio = audio_data.get("audio", "")
+                if not base64_audio:
+                    await websocket.send_json({
+                        "status": "error",
+                        "message": "No audio data provided",
+                        "session_id": session_id
+                    })
+                    continue
+                
+                # Send to Deepgram (response comes through the callback)
+                await transcription_service.transcribe_audio(
+                    base64_audio, 
+                    session_id,
+                    user_id, 
+                    lecture_id
+                )
+                
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for session {session_id}")
     except Exception as e:
@@ -361,12 +343,15 @@ async def teach_to_learn_websocket(websocket: WebSocket) -> None:
     - Text responses for client-side TTS (using Web Speech API)
     
     The frontend only shows a progress bar, and handles text-to-speech in the browser.
+    
+    Note: This handler focuses on the teaching logic, using audio_to_text_websocket
+    with mode="teach" for the actual audio processing.
     """
     await websocket.accept()
-    session_id = None
     conversation_history = []
     current_topic = None
     understanding_score = 0
+    user_id = None
     
     try:
         # First, get initialization parameters
@@ -400,78 +385,14 @@ async def teach_to_learn_websocket(websocket: WebSocket) -> None:
         # Add to conversation history
         conversation_history.append({"ai": initial_question})
         
-        # Define callback function to process user speech
-        async def transcription_callback(result: Dict[str, Any]):
-            nonlocal understanding_score, conversation_history
-            
-            if websocket.client_state == WebSocketState.CONNECTED:
-                try:
-                    # If this is a final result with a transcript
-                    if result.get("is_final", False) and result.get("transcript"):
-                        user_response = result.get("transcript")
-                        
-                        # Add to conversation history
-                        conversation_history.append({"user": user_response})
-                        
-                        # Process with Gemini service
-                        teaching_result = await gemini_service.teach_to_learn(
-                            current_topic,
-                            user_response,
-                            conversation_history
-                        )
-                        
-                        # Update understanding score
-                        understanding_score = teaching_result.get("understanding_score", understanding_score)
-                        
-                        # Prepare AI response
-                        ai_response = teaching_result.get("response", "")
-                        follow_up = teaching_result.get("follow_up_question", "")
-                        full_response = f"{ai_response} {follow_up}"
-                        
-                        # Add to conversation history
-                        conversation_history.append({"ai": full_response})
-                        
-                        # Check if learning is complete
-                        is_complete = teaching_result.get("is_complete", False)
-                        
-                        # Send response as text for client-side TTS
-                        await websocket.send_json({
-                            "status": "response",
-                            "understanding_score": understanding_score,
-                            "is_complete": is_complete,
-                            "text": full_response,
-                            "use_client_tts": True
-                        })
-                            
-                except Exception as e:
-                    logger.error(f"Error in teach-to-learn callback: {str(e)}")
-        
-        # Start a new transcription session with the callback
-        session_id = await transcription_service.start_transcription_session(
-            user_id=user_id,
-            callback=transcription_callback
-        )
-        
-        # Store the WebSocket connection for reference
-        active_connections[session_id] = websocket
-        
-        # Listen for audio chunks from the client
+        # Process user's spoken responses
         while True:
-            # Receive audio chunk from the client
+            # Receive data from client
             data = await websocket.receive_text()
-            audio_data = json.loads(data)
-            
-            # Extract base64 audio
-            base64_audio = audio_data.get("audio", "")
-            if not base64_audio:
-                await websocket.send_json({
-                    "status": "error",
-                    "message": "No audio data provided"
-                })
-                continue
+            input_data = json.loads(data)
             
             # Check if user wants to stop
-            if audio_data.get("stop", False):
+            if input_data.get("stop", False):
                 # Send completion message
                 completion_message = f"Great work on learning about {current_topic}! You've reached an understanding score of {understanding_score}%."
                 
@@ -482,16 +403,49 @@ async def teach_to_learn_websocket(websocket: WebSocket) -> None:
                     "use_client_tts": True
                 })
                 break
-            
-            # Send to Deepgram (response comes through the callback)
-            await transcription_service.transcribe_audio(
-                base64_audio, 
-                session_id,
-                user_id
-            )
-            
+                
+            # If we received a transcript (from audio processing done in separate connection)
+            if input_data.get("transcript"):
+                user_response = input_data.get("transcript")
+                is_final = input_data.get("is_final", True)
+                
+                # Only process final transcripts
+                if is_final:
+                    # Add to conversation history
+                    conversation_history.append({"user": user_response})
+                    
+                    # Process with Gemini service
+                    teaching_result = await gemini_service.teach_to_learn(
+                        current_topic,
+                        user_response,
+                        conversation_history
+                    )
+                    
+                    # Update understanding score
+                    understanding_score = teaching_result.get("understanding_score", understanding_score)
+                    
+                    # Prepare AI response
+                    ai_response = teaching_result.get("response", "")
+                    follow_up = teaching_result.get("follow_up_question", "")
+                    full_response = f"{ai_response} {follow_up}"
+                    
+                    # Add to conversation history
+                    conversation_history.append({"ai": full_response})
+                    
+                    # Check if learning is complete
+                    is_complete = teaching_result.get("is_complete", False)
+                    
+                    # Send response as text for client-side TTS
+                    await websocket.send_json({
+                        "status": "response",
+                        "understanding_score": understanding_score,
+                        "is_complete": is_complete,
+                        "text": full_response,
+                        "use_client_tts": True
+                    })
+                
     except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for teach-to-learn session {session_id}")
+        logger.info(f"WebSocket disconnected for teach-to-learn session for user {user_id}")
     except Exception as e:
         logger.error(f"Error in teach-to-learn: {str(e)}")
         if websocket.client_state == WebSocketState.CONNECTED:
@@ -500,10 +454,5 @@ async def teach_to_learn_websocket(websocket: WebSocket) -> None:
                 "message": str(e)
             })
     finally:
-        # Clean up
-        if session_id:
-            await transcription_service.end_session(session_id)
-            active_connections.pop(session_id, None)
-        
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close() 

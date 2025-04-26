@@ -10,7 +10,7 @@ const TeachToLearn = ({ userId }) => {
   const [isPendingUserResponse, setIsPendingUserResponse] = useState(false);
   const [error, setError] = useState(null);
 
-  const wsRef = useRef(null);
+  const teachWsRef = useRef(null);
   const speechSynthesisRef = useRef(null);
 
   // Set up Web Speech API
@@ -32,7 +32,7 @@ const TeachToLearn = ({ userId }) => {
     };
   }, []);
 
-  // Setup DeepGram for audio recording
+  // Setup DeepGram for audio recording with consolidated endpoint
   const {
     connect: connectToAudio,
     startRecording,
@@ -40,9 +40,26 @@ const TeachToLearn = ({ userId }) => {
     isRecording,
     isConnected: isAudioConnected,
     error: audioError,
+    transcript,
   } = useDeepgramAudio({
     apiUrl: "ws://localhost:8002/ws/audio-to-text",
     userId,
+    mode: "teach", // Use teach mode for the audio processing
+    onTranscript: (newTranscript, isFinal) => {
+      // If final transcript, forward to teaching WebSocket
+      if (
+        isFinal &&
+        teachWsRef.current &&
+        teachWsRef.current.readyState === WebSocket.OPEN
+      ) {
+        teachWsRef.current.send(
+          JSON.stringify({
+            transcript: newTranscript,
+            is_final: true,
+          })
+        );
+      }
+    },
   });
 
   // Speak text using Web Speech API
@@ -92,7 +109,7 @@ const TeachToLearn = ({ userId }) => {
     };
   };
 
-  // Connect to teach-to-learn WebSocket
+  // Connect to teach-to-learn WebSocket for the teaching logic
   const connectToTeachToLearn = () => {
     if (!topic) {
       setError("Please enter a topic to learn about");
@@ -100,9 +117,10 @@ const TeachToLearn = ({ userId }) => {
     }
 
     try {
+      // Connect to the teaching WebSocket
       const wsUrl = "ws://localhost:8002/ws/teach-to-learn";
       const ws = new WebSocket(wsUrl);
-      wsRef.current = ws;
+      teachWsRef.current = ws;
 
       ws.onopen = () => {
         setIsConnected(true);
@@ -188,8 +206,11 @@ const TeachToLearn = ({ userId }) => {
   const handleTeachToLearnToggle = () => {
     if (isTeaching) {
       // Stop the teaching session
-      if (wsRef.current) {
-        wsRef.current.send(JSON.stringify({ stop: true }));
+      if (
+        teachWsRef.current &&
+        teachWsRef.current.readyState === WebSocket.OPEN
+      ) {
+        teachWsRef.current.send(JSON.stringify({ stop: true }));
       }
       stopRecording();
       setIsTeaching(false);

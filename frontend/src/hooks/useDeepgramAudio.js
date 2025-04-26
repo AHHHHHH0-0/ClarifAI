@@ -5,6 +5,7 @@ export const useDeepgramAudio = (options = {}) => {
     apiUrl = "ws://localhost:8002/ws/audio-to-text",
     userId,
     lectureId,
+    mode = "lecture",
     onTranscript,
     onConcepts,
     onError,
@@ -65,6 +66,7 @@ export const useDeepgramAudio = (options = {}) => {
               JSON.stringify({
                 user_id: userId,
                 lecture_id: lectureId,
+                mode: mode,
               })
             );
             resolve(true);
@@ -161,6 +163,7 @@ export const useDeepgramAudio = (options = {}) => {
     apiUrl,
     userId,
     lectureId,
+    mode,
     onTranscript,
     onConcepts,
     onError,
@@ -341,6 +344,27 @@ export const useDeepgramAudio = (options = {}) => {
     };
   }, [disconnect]);
 
+  // Special function for process mode to send transcript text directly
+  const processTranscript = useCallback(async (transcript, isFinal = false) => {
+    if (!socketRef.current || socketRef.current.readyState !== WebSocket.OPEN) {
+      console.error("WebSocket not connected");
+      return false;
+    }
+
+    try {
+      socketRef.current.send(
+        JSON.stringify({
+          transcript,
+          is_final: isFinal,
+        })
+      );
+      return true;
+    } catch (err) {
+      console.error("Error sending transcript for processing:", err);
+      return false;
+    }
+  }, []);
+
   return {
     connect,
     disconnect,
@@ -349,9 +373,10 @@ export const useDeepgramAudio = (options = {}) => {
     isRecording,
     isConnected,
     error,
+    sessionId,
     transcript,
     concepts,
     currentConcept,
-    sessionId,
+    processTranscript,
   };
 };
