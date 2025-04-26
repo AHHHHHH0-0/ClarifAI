@@ -22,7 +22,7 @@ os.environ["GEMINI_API_KEY"] = "fake-test-key"
 async def test_process_audio_websocket_endpoint():
     """Test the /ws/process-audio WebSocket handler with a mock service and client."""  
     # Import the handler
-    from main import process_audio_websocket
+    from backend.src.main import process_audio_websocket
     
     # Create a mock WebSocket client
     mock_websocket = AsyncMock(spec=WebSocket)
