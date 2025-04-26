@@ -29,6 +29,7 @@ untitled.py
 /backend/dist
 
 # Testing
+/tests/
 /tests/**/__pycache__/
 .pytest_cache/
 .coverage
