@@ -1,24 +1,28 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from typing import Dict, Any
-import json
 import logging
-from dotenv import load_dotenv
-from pydantic import BaseModel
 
-load_dotenv()  # Load environment variables at application startup
-
-from src.gemini_service import GeminiService
-from src.audio_service import create_transcription_service
+# Import from the new modular structure
+from backend.src.config import API_TITLE, API_DESCRIPTION, API_VERSION
+from backend.src.api.websockets import (
+    process_audio_websocket,
+    audio_to_text_websocket,
+    flag_concept_websocket,
+    flagged_history_websocket,
+    evaluate_understanding_websocket
+)
+from backend.src.api.routes import router as api_router
+from backend.src.database.db import init_db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Create FastAPI app
 app = FastAPI(
-    title="ClarifAI API",
-    description="API for processing audio transcripts and explaining concepts",
-    version="1.0.0"
+    title=API_TITLE,
+    description=API_DESCRIPTION,
+    version=API_VERSION
 )
 
 # Configure CORS
@@ -30,232 +34,48 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize services
-gemini_service = GeminiService()
-transcription_service = create_transcription_service()
+# Include API routes
+app.include_router(api_router, prefix="/api")
 
-# Store active WebSocket connections
-active_connections = {}
-
+# WebSocket endpoints
 @app.websocket("/ws/process-audio")
-async def process_audio_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
-    
-    previous_transcript = ""
-    
-    try:
-        while True:
-            # Receive transcript from the client
-            data = await websocket.receive_text()
-            transcript_data = json.loads(data)
-            transcript: str = transcript_data.get("transcript", "")
-            
-            # Process the transcript with incremental support
-            result: Dict[str, Any] = await gemini_service.process_audio_transcript(
-                transcript, 
-                previous_transcript
-            )
-            
-            # Update previous transcript for next iteration
-            previous_transcript = transcript
-            
-            # Send the processed result back
-            await websocket.send_json(result)
-            
-    except WebSocketDisconnect:
-        await websocket.close()
-    except Exception as e:
-        logger.error(f"Error in process-audio: {str(e)}")
-        await websocket.send_json({
-            "status": "error",
-            "message": str(e)
-        })
-    finally:
-        if websocket.client_state.CONNECTED:
-            await websocket.close()
+async def process_audio_ws_endpoint(websocket: WebSocket):
+    return await process_audio_websocket(websocket)
 
 @app.websocket("/ws/audio-to-text")
-async def audio_to_text_websocket(websocket: WebSocket) -> None:
-    """
-    WebSocket endpoint to receive raw audio data and convert it to text using Deepgram.
-    """
-    await websocket.accept()
-    session_id = None
-    
-    try:
-        # First, get initialization parameters
-        init_data = await websocket.receive_text()
-        params = json.loads(init_data)
-        
-        # Extract user_id and lecture_id if provided
-        user_id = params.get("user_id")
-        lecture_id = params.get("lecture_id")
-        
-        logger.info(f"Initializing audio transcription for user_id: {user_id}, lecture_id: {lecture_id}")
-        
-        # Define callback function to forward transcription to client
-        async def transcription_callback(result: Dict[str, Any]):
-            if websocket.client_state.CONNECTED:
-                try:
-                    # If this is a final result with a transcript, also process with Gemini
-                    if result.get("is_final", False) and result.get("full_transcript"):
-                        full_transcript = result.get("full_transcript")
-                        
-                        # Process with Gemini service
-                        gemini_result = await gemini_service.process_audio_transcript(
-                            full_transcript,
-                            ""  # No previous transcript needed as service manages the buffer
-                        )
-                        
-                        # Add the processed concepts to the result
-                        result["concepts"] = gemini_result.get("concepts", [])
-                        result["current_concept"] = gemini_result.get("current_concept")
-                    
-                    # Send result to client
-                    await websocket.send_json(result)
-                except Exception as e:
-                    logger.error(f"Error in transcription callback: {str(e)}")
-        
-        # Start a new transcription session with the callback
-        session_id = await transcription_service.start_transcription_session(
-            user_id=user_id,
-            lecture_id=lecture_id,
-            callback=transcription_callback
-        )
-        
-        # Store the WebSocket connection for reference
-        active_connections[session_id] = websocket
-        
-        # Send initial confirmation
-        await websocket.send_json({
-            "status": "connected",
-            "session_id": session_id,
-            "message": "Connected to Deepgram streaming API"
-        })
-        
-        # Listen for audio chunks from the client
-        while True:
-            # Receive audio chunk from the client
-            data = await websocket.receive_text()
-            audio_data = json.loads(data)
-            
-            # Extract base64 audio
-            base64_audio = audio_data.get("audio", "")
-            if not base64_audio:
-                await websocket.send_json({
-                    "status": "error",
-                    "message": "No audio data provided",
-                    "session_id": session_id
-                })
-                continue
-            
-            # Send to Deepgram (response comes through the callback)
-            await transcription_service.transcribe_audio(
-                base64_audio, 
-                session_id,
-                user_id, 
-                lecture_id
-            )
-            
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for session {session_id}")
-    except Exception as e:
-        logger.error(f"Error in audio-to-text: {str(e)}")
-        if websocket.client_state.CONNECTED:
-            await websocket.send_json({
-                "status": "error",
-                "message": str(e),
-                "session_id": session_id if session_id else "unknown"
-            })
-    finally:
-        # Clean up
-        if session_id:
-            await transcription_service.end_session(session_id)
-            active_connections.pop(session_id, None)
-        
-        if websocket.client_state.CONNECTED:
-            await websocket.close()
+async def audio_to_text_ws_endpoint(websocket: WebSocket):
+    return await audio_to_text_websocket(websocket)
 
 @app.websocket("/ws/flag-concept")
-async def flag_concept_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
-    
-    try:
-        while True:
-            # Receive concept flagging request
-            data = await websocket.receive_text()
-            flag_data = json.loads(data)
-            
-            concept_name = flag_data.get("concept_name", "")
-            context = flag_data.get("context", "")
-            
-            # Get explanation for the flagged concept
-            result = await gemini_service.explain_concept(concept_name, context)
-            
-            # Send the explanation back
-            await websocket.send_json(result)
-            
-    except WebSocketDisconnect:
-        await websocket.close()
-    except Exception as e:
-        await websocket.send_json({
-            "status": "error",
-            "message": str(e)
-        })
-    finally:
-        if websocket.client_state.CONNECTED:
-            await websocket.close()
+async def flag_concept_ws_endpoint(websocket: WebSocket):
+    return await flag_concept_websocket(websocket)
 
 @app.websocket("/ws/flagged-history")
-async def flagged_history_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
-    
-    try:
-        # Just retrieve the history - no need for continuous updates
-        result = await gemini_service.get_flagged_history()
-        await websocket.send_json(result)
-            
-    except WebSocketDisconnect:
-        await websocket.close()
-    except Exception as e:
-        await websocket.send_json({
-            "status": "error",
-            "message": str(e)
-        })
-    finally:
-        if websocket.client_state.CONNECTED:
-            await websocket.close()
+async def flagged_history_ws_endpoint(websocket: WebSocket):
+    return await flagged_history_websocket(websocket)
 
 @app.websocket("/ws/evaluate-understanding")
-async def evaluate_understanding_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
-    
+async def evaluate_understanding_ws_endpoint(websocket: WebSocket):
+    return await evaluate_understanding_websocket(websocket)
+
+# Startup event to initialize database
+@app.on_event("startup")
+async def startup_event():
     try:
-        while True:
-            # Receive evaluation request
-            data = await websocket.receive_text()
-            eval_data = json.loads(data)
-            
-            lecture_transcript = eval_data.get("lecture_transcript", "")
-            user_explanation = eval_data.get("user_explanation", "")
-            
-            # Evaluate understanding
-            result = await gemini_service.evaluate_understanding(lecture_transcript, user_explanation)
-            
-            # Send the evaluation back
-            await websocket.send_json(result)
-            
-    except WebSocketDisconnect:
-        await websocket.close()
+        await init_db()
+        logger.info("Database initialized successfully")
     except Exception as e:
-        await websocket.send_json({
-            "status": "error",
-            "message": str(e)
-        })
-    finally:
-        if websocket.client_state.CONNECTED:
-            await websocket.close()
+        logger.error(f"Failed to initialize database: {str(e)}")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000) 
+    import argparse
+    
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description="Start the FastAPI server")
+    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
+    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+    args = parser.parse_args()
+    
+    # Start server with provided arguments
+    uvicorn.run(app, host=args.host, port=args.port) 

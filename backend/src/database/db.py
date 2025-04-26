@@ -4,6 +4,8 @@ import os
 from dotenv import load_dotenv
 from typing import List, Type
 
+# Import models
+from backend.src.database.models import Transcript, FlaggedConcept
 
 load_dotenv()
 
@@ -23,5 +25,7 @@ async def init_db():
     await init_beanie(
         database=client.lahacks,
         document_models=[
+            Transcript,
+            FlaggedConcept
         ]
     ) 

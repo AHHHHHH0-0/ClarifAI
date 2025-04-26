@@ -13,7 +13,7 @@ from datetime import datetime
 # Conditionally import MongoDB dependencies
 try:
     from bson.objectid import ObjectId
-    from .database import get_database
+    from backend.src.database.db import get_database
     MONGODB_AVAILABLE = True
 except ImportError:
     MONGODB_AVAILABLE = False
