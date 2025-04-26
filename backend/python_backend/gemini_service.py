@@ -1,7 +1,13 @@
 import os
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import google.generativeai as genai
 import json
+from datetime import datetime
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 class GeminiService:
     def __init__(self):
@@ -10,31 +16,64 @@ class GeminiService:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-pro')
+        self.model = genai.GenerativeModel('models/gemini-2.5-flash-preview-04-17')  # Using Gemini 2.5 Flash
         self.flagged_concepts: List[Dict[str, Any]] = []  # Track flagged concepts
     
-    async def process_audio_transcript(self, transcript: str) -> Dict[str, Any]:
+    def _safe_api_call(self, prompt: str) -> Optional[str]:
+        """
+        Makes a safe API call with error handling.
+        
+        Args:
+            prompt: The prompt to send to the model
+            
+        Returns:
+            The response text or None if there was an error
+        """
+        try:
+            response = self.model.generate_content(prompt)
+            return response.text
+        except Exception as e:
+            logger.error(f"API call error: {str(e)}")
+            return None
+
+    async def process_audio_transcript(self, transcript: str, previous_transcript: str = "") -> Dict[str, Any]:
         """
         Process an audio transcript using Gemini API.
         
         Args:
-            transcript (str): The text transcript from audio
+            transcript (str): The full text transcript from audio
+            previous_transcript (str): The previous transcript (for incremental processing)
             
         Returns:
             Dict containing:
             - concepts: List of identified concepts with their locations in the text
             - current_concept: Currently discussed concept
-            - concept_explanation: Detailed explanation with examples (if requested)
+            - new_content: True if new content was detected
             - flagged_history: History of flagged concepts
         """
+        # Check if there's new content to process
+        has_new_content = len(transcript) > len(previous_transcript)
+        
+        # If no new content, return previous concepts without processing
+        if not has_new_content and hasattr(self, 'last_concepts'):
+            return {
+                "concepts": self.last_concepts,
+                "current_concept": self.last_current_concept if hasattr(self, 'last_current_concept') else None,
+                "new_content": False,
+                "flagged_history": self.flagged_concepts,
+                "status": "success"
+            }
+            
         # First, identify and structure the concepts from the transcript
         concepts_prompt = f"""
         Analyze this lecture transcript and identify key concepts that students might find challenging.
+        Focus on the most recent/last part of the transcript to identify what's currently being discussed.
         For each concept:
         1. Identify the concept name
         2. Extract the relevant text snippet where it's discussed
         3. Determine the start and end position of the concept in the text
         4. Assess potential difficulty (1-5 scale)
+        5. Indicate if this is currently being discussed (true/false)
 
         Format the response as a JSON array with objects containing:
         - concept_name
@@ -42,30 +81,48 @@ class GeminiService:
         - start_position (approximate char position in transcript)
         - end_position
         - difficulty_level
+        - is_current
 
         Transcript:
         {transcript}
         """
         
-        concepts_response = await self.model.generate_content(concepts_prompt)
-        try:
-            concepts_data = json.loads(concepts_response.text)
-        except json.JSONDecodeError:
-            # Fallback if response is not valid JSON
+        concepts_response_text = self._safe_api_call(concepts_prompt)
+        if concepts_response_text is None:
             concepts_data = [{
-                "concept_name": "Error parsing concepts",
+                "concept_name": "Error connecting to API",
                 "text_snippet": transcript[:100] + "...",
                 "start_position": 0,
                 "end_position": len(transcript),
-                "difficulty_level": 1
+                "difficulty_level": 1,
+                "is_current": True
             }]
+        else:
+            try:
+                concepts_data = json.loads(concepts_response_text)
+            except json.JSONDecodeError:
+                # Fallback if response is not valid JSON
+                concepts_data = [{
+                    "concept_name": "Error parsing concepts",
+                    "text_snippet": transcript[:100] + "...",
+                    "start_position": 0,
+                    "end_position": len(transcript),
+                    "difficulty_level": 1,
+                    "is_current": True
+                }]
 
-        # Identify the current concept being discussed (last part of transcript)
-        current_concept = concepts_data[-1] if concepts_data else None
+        # Identify current concepts being discussed
+        current_concepts = [c for c in concepts_data if c.get("is_current", False)]
+        current_concept = current_concepts[0] if current_concepts else (concepts_data[-1] if concepts_data else None)
+        
+        # Store for future reference
+        self.last_concepts = concepts_data
+        self.last_current_concept = current_concept
 
         return {
             "concepts": concepts_data,
             "current_concept": current_concept,
+            "new_content": has_new_content,
             "flagged_history": self.flagged_concepts,
             "status": "success"
         }
@@ -100,55 +157,46 @@ class GeminiService:
         - related_concepts (array)
         """
         
-        response = await self.model.generate_content(prompt)
+        response_text = self._safe_api_call(prompt)
+        if response_text is None:
+            return {
+                "explanation": {
+                    "explanation": f"Unable to generate explanation for {concept_name} at this time.",
+                    "examples": [],
+                    "misconceptions": [],
+                    "related_concepts": []
+                },
+                "status": "error",
+                "message": "API connection error"
+            }
+            
         try:
-            explanation_data = json.loads(response.text)
-            # Add to flagged history
+            explanation_data = json.loads(response_text)
+            # Add to flagged history with proper timestamp
+            timestamp = datetime.now().isoformat()
             self.flagged_concepts.append({
                 "concept": concept_name,
-                "timestamp": "now",  # TODO: Add actual timestamp
+                "timestamp": timestamp,
+                "context": context,
                 "explanation": explanation_data
             })
             return {
                 "explanation": explanation_data,
+                "timestamp": timestamp,
                 "status": "success"
             }
         except json.JSONDecodeError:
             return {
-                "explanation": response.text,
+                "explanation": {
+                    "explanation": response_text[:500] + "...",  # Include partial text
+                    "examples": [],
+                    "misconceptions": [],
+                    "related_concepts": []
+                },
                 "status": "error",
                 "message": "Failed to parse explanation"
             }
     
-    async def generate_quiz(self, transcript: str) -> Dict[str, Any]:
-        """
-        Generate quiz questions based on the transcript content.
-        
-        Args:
-            transcript (str): The text transcript from audio
-            
-        Returns:
-            Dict containing quiz questions and answers
-        """
-        prompt = f"""
-        Based on this lecture transcript, generate 3 quiz questions:
-        
-        Transcript:
-        {transcript}
-        
-        For each question:
-        1. Create a multiple choice question
-        2. Provide 4 possible answers
-        3. Indicate the correct answer
-        4. Add a brief explanation
-        """
-        
-        response = await self.model.generate_content(prompt)
-        return {
-            "quiz_content": response.text,
-            "status": "success"
-        }
-
     async def evaluate_understanding(self, lecture_transcript: str, user_explanation: str) -> Dict[str, Any]:
         """
         Evaluate user's understanding based on their explanation and generate follow-up questions.
@@ -184,16 +232,48 @@ class GeminiService:
         - improvement_suggestions (array)
         """
 
-        response = await self.model.generate_content(prompt)
+        response_text = self._safe_api_call(prompt)
+        if response_text is None:
+            return {
+                "evaluation": {
+                    "understanding_level": 0,
+                    "accurate_points": [],
+                    "gaps": ["Unable to evaluate due to API error"],
+                    "follow_up_questions": ["Can you try explaining again?"],
+                    "improvement_suggestions": []
+                },
+                "status": "error",
+                "message": "API connection error"
+            }
+            
         try:
-            evaluation_data = json.loads(response.text)
+            evaluation_data = json.loads(response_text)
             return {
                 "evaluation": evaluation_data,
                 "status": "success"
             }
         except json.JSONDecodeError:
             return {
-                "evaluation": response.text,
+                "evaluation": {
+                    "understanding_level": 0,
+                    "accurate_points": [],
+                    "gaps": ["Error in processing your explanation"],
+                    "follow_up_questions": ["Can you try explaining in a different way?"],
+                    "improvement_suggestions": ["Be more specific and structured in your explanation"]
+                },
                 "status": "error",
                 "message": "Failed to parse evaluation"
-            } 
+            }
+    
+    async def get_flagged_history(self) -> Dict[str, Any]:
+        """
+        Retrieve the history of flagged concepts.
+        
+        Returns:
+            Dict containing the history of flagged concepts
+        """
+        return {
+            "flagged_concepts": self.flagged_concepts,
+            "status": "success"
+        } 
+        
