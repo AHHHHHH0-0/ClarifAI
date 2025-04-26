@@ -11,7 +11,7 @@ from gemini_service import GeminiService
 
 app = FastAPI(
     title="ClarifAI API",
-    description="API for processing audio transcripts and generating quizzes",
+    description="API for processing audio transcripts and explaining concepts",
     version="1.0.0"
 )
 
@@ -63,34 +63,6 @@ async def process_audio_websocket(websocket: WebSocket) -> None:
         if websocket.client_state.CONNECTED:
             await websocket.close()
 
-@app.websocket("/ws/generate-quiz")
-async def generate_quiz_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
-    
-    try:
-        while True:
-            # Receive transcript from the client
-            data = await websocket.receive_text()
-            transcript_data = json.loads(data)
-            transcript: str = transcript_data.get("transcript", "")
-            
-            # Generate quiz questions
-            result: Dict[str, Any] = await gemini_service.generate_quiz(transcript)
-            
-            # Send the quiz back
-            await websocket.send_json(result)
-            
-    except WebSocketDisconnect:
-        await websocket.close()
-    except Exception as e:
-        await websocket.send_json({
-            "status": "error",
-            "message": str(e)
-        })
-    finally:
-        if websocket.client_state.CONNECTED:
-            await websocket.close()
-
 @app.websocket("/ws/flag-concept")
 async def flag_concept_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -129,6 +101,36 @@ async def flagged_history_websocket(websocket: WebSocket) -> None:
         # Just retrieve the history - no need for continuous updates
         result = await gemini_service.get_flagged_history()
         await websocket.send_json(result)
+            
+    except WebSocketDisconnect:
+        await websocket.close()
+    except Exception as e:
+        await websocket.send_json({
+            "status": "error",
+            "message": str(e)
+        })
+    finally:
+        if websocket.client_state.CONNECTED:
+            await websocket.close()
+
+@app.websocket("/ws/evaluate-understanding")
+async def evaluate_understanding_websocket(websocket: WebSocket) -> None:
+    await websocket.accept()
+    
+    try:
+        while True:
+            # Receive evaluation request
+            data = await websocket.receive_text()
+            eval_data = json.loads(data)
+            
+            lecture_transcript = eval_data.get("lecture_transcript", "")
+            user_explanation = eval_data.get("user_explanation", "")
+            
+            # Evaluate understanding
+            result = await gemini_service.evaluate_understanding(lecture_transcript, user_explanation)
+            
+            # Send the evaluation back
+            await websocket.send_json(result)
             
     except WebSocketDisconnect:
         await websocket.close()

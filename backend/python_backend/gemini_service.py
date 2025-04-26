@@ -1,6 +1,6 @@
 import os
 from typing import Dict, Any, List, Optional
-import google.generativeai as genai
+from google import genai
 import json
 import re
 from datetime import datetime
@@ -17,84 +17,51 @@ class GeminiService:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('models/gemini-2.5-flash-preview-04-17')  # Using Gemini 2.5 Flash
+        # Using Gemini 2.5 Flash model
+        self.model = genai.GenerativeModel('models/gemini-2.5-flash-preview-04-17')
         self.flagged_concepts: List[Dict[str, Any]] = []  # Track flagged concepts
     
-    def _safe_api_call(self, prompt: str) -> Optional[str]:
+    def _safe_api_call(self, prompt: str, response_schema: Dict[str, Any] = None) -> Any:
         """
-        Makes a safe API call with error handling.
+        Makes a safe API call with proper configuration for JSON responses.
         
         Args:
             prompt: The prompt to send to the model
+            response_schema: Optional JSON schema to structure the response
             
         Returns:
-            The response text or None if there was an error
+            The parsed response or None if there was an error
         """
         try:
-            response = self.model.generate_content(prompt)
-            return response.text
+            # Configure generation parameters to get structured JSON
+            generation_config = {
+                "temperature": 0.2,  # Lower temperature for more deterministic responses
+                "top_p": 0.8,
+                "top_k": 40,
+                "response_mime_type": "application/json",  # Request JSON output
+            }
+            
+            # Add explicit request for JSON at the end of the prompt
+            json_prompt = f"{prompt}\n\nRespond with a valid JSON object only. No explanations or markdown."
+            
+            # Make the API call with specific generation config
+            response = self.model.generate_content(
+                json_prompt, 
+                generation_config=generation_config
+            )
+            
+            # Try to parse the response as JSON
+            if hasattr(response, 'text'):
+                try:
+                    return json.loads(response.text)
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse response as JSON: {e}")
+                    logger.error(f"Response text: {response.text[:500]}...")
+                    return None
+            return None
         except Exception as e:
             logger.error(f"API call error: {str(e)}")
             return None
-    
-    def _clean_and_parse_json(self, text: Optional[str]) -> Dict[str, Any]:
-        """
-        Cleans response text that might be wrapped in markdown code blocks
-        and attempts to parse it as JSON.
-        
-        Args:
-            text: Response text that might contain JSON
-            
-        Returns:
-            Parsed JSON object or fallback object on error
-        """
-        if text is None:
-            return {}
-        
-        # Log the original text for debugging
-        logger.debug(f"Original response: {text[:500]}...")
-        
-        # Remove markdown code block markers
-        # Pattern for code blocks: ```json ... ```
-        cleaned_text = re.sub(r'```(?:json)?\n?', '', text)
-        cleaned_text = re.sub(r'```\n?', '', cleaned_text)
-        
-        # Try to extract JSON-like content with { }
-        json_match = re.search(r'({[\s\S]*})', cleaned_text)
-        if json_match:
-            cleaned_text = json_match.group(1)
-        
-        try:
-            return json.loads(cleaned_text)
-        except json.JSONDecodeError as e:
-            logger.error(f"JSON parsing error: {str(e)}")
-            logger.error(f"Cleaned text: {cleaned_text[:500]}...")
-            
-            # Try a more aggressive approach for malformed JSON
-            try:
-                # Handle potential non-standard JSON (like duplicate keys)
-                # by parsing line by line and handling duplicates
-                result = {}
-                # Match any key-value pairs like "key": value
-                pattern = r'"([^"]+)"\s*:\s*("(?:\\.|[^"\\])*"|[^",\s\]\}]+|\[[^\]]*\]|\{[^\}]*\})'
-                for match in re.finditer(pattern, cleaned_text):
-                    key, value = match.groups()
-                    try:
-                        # Try to parse the value
-                        parsed_value = json.loads(value)
-                        result[key] = parsed_value
-                    except:
-                        # If value parsing fails, use it as a string
-                        result[key] = value
-                
-                # If result is still empty, we couldn't parse anything useful
-                if not result:
-                    raise ValueError("Could not extract useful JSON content")
-                    
-                return result
-            except Exception as inner_e:
-                logger.error(f"Advanced JSON parsing failed: {str(inner_e)}")
-                return {}
     
     async def process_audio_transcript(self, transcript: str, previous_transcript: str = "") -> Dict[str, Any]:
         """
@@ -124,55 +91,53 @@ class GeminiService:
                 "status": "success"
             }
             
+        # Define the schema for the response
+        response_schema = {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "concept_name": {"type": "string"},
+                    "text_snippet": {"type": "string"},
+                    "start_position": {"type": "integer"},
+                    "end_position": {"type": "integer"},
+                    "difficulty_level": {"type": "integer", "minimum": 1, "maximum": 5},
+                    "is_current": {"type": "boolean"}
+                },
+                "required": ["concept_name", "text_snippet", "difficulty_level", "is_current"]
+            }
+        }
+            
         # First, identify and structure the concepts from the transcript
         concepts_prompt = f"""
-        Analyze this lecture transcript and identify key concepts that students might find challenging.
+        You are an educational content analyzer. Analyze this lecture transcript and identify key concepts that students might find challenging.
+        
         Focus on the most recent/last part of the transcript to identify what's currently being discussed.
         For each concept:
         1. Identify the concept name
         2. Extract the relevant text snippet where it's discussed
-        3. Determine the start and end position of the concept in the text
+        3. Determine the start and end position of the concept in the text (0-indexed character positions)
         4. Assess potential difficulty (1-5 scale)
         5. Indicate if this is currently being discussed (true/false)
 
-        Format the response as a JSON array with objects containing:
-        - concept_name
-        - text_snippet
-        - start_position (approximate char position in transcript)
-        - end_position
-        - difficulty_level
-        - is_current
-        
-        Do not include any markdown formatting - return only valid JSON.
-
         Transcript:
         {transcript}
+        
+        Respond with a JSON array where each element is an object with these fields:
+        - concept_name: String with the name of the concept
+        - text_snippet: String with the excerpt from the transcript
+        - start_position: Integer with the start position in the transcript
+        - end_position: Integer with the end position in the transcript
+        - difficulty_level: Integer from 1-5
+        - is_current: Boolean indicating if it's being discussed now
         """
         
-        concepts_response_text = self._safe_api_call(concepts_prompt)
+        # Make the API call with the schema
+        concepts_data = self._safe_api_call(concepts_prompt, response_schema)
         
-        try:
-            # Use our improved JSON parser
-            parsed_response = self._clean_and_parse_json(concepts_response_text)
-            
-            # Handle different response formats
-            if isinstance(parsed_response, list):
-                concepts_data = parsed_response
-            elif isinstance(parsed_response, dict) and any(key.startswith("concept") for key in parsed_response.keys()):
-                # Response is a single concept object, wrap in list
-                concepts_data = [parsed_response]
-            else:
-                # Look for any list that might contain concepts
-                for key, value in parsed_response.items():
-                    if isinstance(value, list) and len(value) > 0:
-                        if isinstance(value[0], dict) and "concept_name" in value[0]:
-                            concepts_data = value
-                            break
-                else:
-                    # No valid concept list found
-                    raise ValueError("Could not find concept list in response")
-        except Exception as e:
-            logger.error(f"Failed to process concepts: {str(e)}")
+        # Handle invalid or empty responses
+        if not concepts_data or not isinstance(concepts_data, list) or len(concepts_data) == 0:
+            # Fallback to a default concept
             concepts_data = [{
                 "concept_name": "Data Structures",
                 "text_snippet": transcript[:100] + "...",
@@ -197,7 +162,7 @@ class GeminiService:
             "flagged_history": self.flagged_concepts,
             "status": "success"
         }
-    
+        
     async def explain_concept(self, concept_name: str, context: str) -> Dict[str, Any]:
         """
         Generate a detailed explanation for a specific concept.
@@ -209,10 +174,23 @@ class GeminiService:
         Returns:
             Dict containing the explanation and examples
         """
-        prompt = f"""
-        Explain the concept of "{concept_name}" in detail.
+        # Define the schema for the explanation
+        response_schema = {
+            "type": "object",
+            "properties": {
+                "explanation": {"type": "string"},
+                "examples": {"type": "array", "items": {"type": "string"}},
+                "misconceptions": {"type": "array", "items": {"type": "string"}},
+                "related_concepts": {"type": "array", "items": {"type": "string"}}
+            },
+            "required": ["explanation", "examples", "misconceptions", "related_concepts"]
+        }
         
-        Context from lecture:
+        prompt = f"""
+        You are an educational assistant helping a student understand a difficult concept.
+        
+        Explain the concept of "{concept_name}" in detail based on this context:
+        
         {context}
 
         Provide:
@@ -220,19 +198,12 @@ class GeminiService:
         2. Three concrete examples
         3. Common misconceptions
         4. Related concepts to explore
-        
-        Format as JSON with:
-        - explanation (string)
-        - examples (array of strings)
-        - misconceptions (array of strings)
-        - related_concepts (array of strings)
-        
-        Return only valid JSON without any markdown formatting.
         """
         
-        response_text = self._safe_api_call(prompt)
+        # Make the API call with the schema
+        explanation_data = self._safe_api_call(prompt, response_schema)
         
-        # Default explanation if parsing fails
+        # Default explanation if API call fails
         default_explanation = {
             "explanation": f"The concept of {concept_name} refers to {context}",
             "examples": ["Example 1", "Example 2", "Example 3"],
@@ -240,36 +211,29 @@ class GeminiService:
             "related_concepts": ["Related concept"]
         }
         
-        try:
-            # Use our improved JSON parser
-            explanation_data = self._clean_and_parse_json(response_text)
-            
+        # If API call failed or didn't return correct format, use default
+        if not explanation_data or not isinstance(explanation_data, dict):
+            explanation_data = default_explanation
+        else:
             # Ensure all required fields exist
             for field in ["explanation", "examples", "misconceptions", "related_concepts"]:
-                if field not in explanation_data:
+                if field not in explanation_data or not explanation_data[field]:
                     explanation_data[field] = default_explanation[field]
-                    
-            # Add to flagged history with proper timestamp
-            timestamp = datetime.now().isoformat()
-            self.flagged_concepts.append({
-                "concept": concept_name,
-                "timestamp": timestamp,
-                "context": context,
-                "explanation": explanation_data
-            })
-            
-            return {
-                "explanation": explanation_data,
-                "timestamp": timestamp,
-                "status": "success"
-            }
-        except Exception as e:
-            logger.error(f"Failed to explain concept: {str(e)}")
-            return {
-                "explanation": default_explanation,
-                "status": "success",  # Still return success to avoid breaking the UI
-                "message": "Used fallback explanation due to parsing issues"
-            }
+        
+        # Add to flagged history with proper timestamp
+        timestamp = datetime.now().isoformat()
+        self.flagged_concepts.append({
+            "concept": concept_name,
+            "timestamp": timestamp,
+            "context": context,
+            "explanation": explanation_data
+        })
+        
+        return {
+            "explanation": explanation_data,
+            "timestamp": timestamp,
+            "status": "success"
+        }
     
     async def evaluate_understanding(self, lecture_transcript: str, user_explanation: str) -> Dict[str, Any]:
         """
@@ -282,64 +246,64 @@ class GeminiService:
         Returns:
             Dict containing evaluation, feedback, and follow-up questions
         """
+        # Define the schema for the evaluation
+        response_schema = {
+            "type": "object",
+            "properties": {
+                "understanding_level": {"type": "integer", "minimum": 1, "maximum": 5},
+                "accurate_points": {"type": "array", "items": {"type": "string"}},
+                "gaps": {"type": "array", "items": {"type": "string"}},
+                "follow_up_questions": {"type": "array", "items": {"type": "string"}},
+                "improvement_suggestions": {"type": "array", "items": {"type": "string"}}
+            },
+            "required": ["understanding_level", "accurate_points", "gaps", "follow_up_questions", "improvement_suggestions"]
+        }
+        
         prompt = f"""
-        Compare the user's explanation with the original lecture content and evaluate their understanding.
+        You are an educational assistant evaluating a student's understanding of a concept.
+        
+        Compare the student's explanation with the original lecture content:
 
         Original Lecture:
         {lecture_transcript}
 
-        User's Explanation:
+        Student's Explanation:
         {user_explanation}
 
-        Provide a detailed analysis in JSON format with:
-        1. Understanding level (1-5 scale)
+        Evaluate their understanding by providing:
+        1. Understanding level (1-5 scale, where 5 is excellent)
         2. Accurate points they made
-        3. Misconceptions or gaps
-        4. Follow-up questions to deepen understanding
+        3. Misconceptions or gaps in their understanding
+        4. Follow-up questions to deepen their understanding
         5. Suggestions for improvement
-
-        Format as JSON with:
-        - understanding_level (number)
-        - accurate_points (array of strings)
-        - gaps (array of strings)
-        - follow_up_questions (array of strings)
-        - improvement_suggestions (array of strings)
-        
-        Return only valid JSON without any markdown formatting.
         """
 
-        response_text = self._safe_api_call(prompt)
+        # Make the API call with the schema
+        evaluation_data = self._safe_api_call(prompt, response_schema)
         
-        # Default evaluation if parsing fails
+        # Default evaluation if API call fails
         default_evaluation = {
             "understanding_level": 3,
-            "accurate_points": ["The user showed some understanding of the concept"],
+            "accurate_points": ["The student showed some understanding of the concept"],
             "gaps": ["Some details were missing"],
             "follow_up_questions": ["Can you elaborate more on the concept?"],
             "improvement_suggestions": ["Consider explaining with examples"]
         }
         
-        try:
-            # Use our improved JSON parser
-            evaluation_data = self._clean_and_parse_json(response_text)
-            
+        # If API call failed or didn't return correct format, use default
+        if not evaluation_data or not isinstance(evaluation_data, dict):
+            evaluation_data = default_evaluation
+        else:
             # Ensure all required fields exist
             for field in ["understanding_level", "accurate_points", "gaps", "follow_up_questions", "improvement_suggestions"]:
-                if field not in evaluation_data:
+                if field not in evaluation_data or not evaluation_data[field]:
                     evaluation_data[field] = default_evaluation[field]
+        
+        return {
+            "evaluation": evaluation_data,
+            "status": "success"
+        }
             
-            return {
-                "evaluation": evaluation_data,
-                "status": "success"
-            }
-        except Exception as e:
-            logger.error(f"Failed to evaluate understanding: {str(e)}")
-            return {
-                "evaluation": default_evaluation,
-                "status": "success",  # Still return success to avoid breaking the UI
-                "message": "Used fallback evaluation due to parsing issues"
-            }
-    
     async def get_flagged_history(self) -> Dict[str, Any]:
         """
         Retrieve the history of flagged concepts.
