@@ -314,5 +314,76 @@ class GeminiService:
         return {
             "flagged_concepts": self.flagged_concepts,
             "status": "success"
-        } 
+        }
+    
+    async def generate_organized_notes(self, transcript: str) -> Dict[str, Any]:
+        """
+        Generate organized notes from a raw transcript.
+        
+        Args:
+            transcript: The raw transcript text
+            
+        Returns:
+            Dict containing:
+            - title: A title for the notes
+            - content: The organized content in markdown format
+            - sections: List of sections with headings and content
+        """
+        # Define the schema for the organized notes
+        response_schema = {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string"},
+                "content": {"type": "string"},
+                "sections": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "heading": {"type": "string"},
+                            "content": {"type": "string"}
+                        }
+                    }
+                }
+            },
+            "required": ["title", "content", "sections"]
+        }
+            
+        # Create the prompt for organizing notes
+        notes_prompt = f"""
+        You are an expert at organizing lecture transcriptions into clear, structured notes.
+        Analyze this raw transcript and create well-organized lecture notes.
+        
+        Include:
+        1. An appropriate title for the lecture
+        2. Well-organized content with headings, bullet points, and formatting
+        3. Logical sections that capture the main topics
+        
+        Format the content using markdown syntax for better readability.
+        
+        Raw Transcript:
+        {transcript}
+        
+        Respond with a JSON object containing:
+        - title: A concise title for these notes
+        - content: The full formatted content in markdown
+        - sections: An array of section objects with 'heading' and 'content' fields
+        """
+        
+        # Make the API call with the schema
+        notes_data = self._safe_api_call(notes_prompt, response_schema)
+        
+        # Handle invalid or empty responses
+        if not notes_data or not isinstance(notes_data, dict):
+            # Return a default format
+            return {
+                "title": "Lecture Notes",
+                "content": transcript,
+                "sections": [{
+                    "heading": "Main Content",
+                    "content": transcript
+                }]
+            }
+        
+        return notes_data 
         

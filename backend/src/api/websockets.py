@@ -14,6 +14,15 @@ active_connections = {}
 from backend.src.services.gemini import GeminiService
 from backend.src.services.audio import create_transcription_service
 
+# Import database functions
+from backend.src.database.db import (
+    save_transcript, 
+    save_flagged_concept, 
+    save_organized_notes,
+    save_other_concept,
+    get_flagged_concepts
+)
+
 # Initialize services
 gemini_service = GeminiService()
 transcription_service = create_transcription_service()
@@ -22,8 +31,17 @@ async def process_audio_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
     
     previous_transcript = ""
+    user_id = None
+    lecture_id = None
+    transcript_id = None
     
     try:
+        # Get initial data for identifying the user/lecture
+        init_data = await websocket.receive_text()
+        params = json.loads(init_data)
+        user_id = params.get("user_id")
+        lecture_id = params.get("lecture_id")
+        
         while True:
             # Receive transcript from the client
             data = await websocket.receive_text()
@@ -41,6 +59,41 @@ async def process_audio_websocket(websocket: WebSocket) -> None:
             
             # Send the processed result back
             await websocket.send_json(result)
+            
+            # If this is a final transcript, save it to the database
+            if transcript_data.get("is_final", False):
+                # Save the raw transcript
+                transcript_id = await save_transcript(user_id, lecture_id, transcript)
+                
+                # Save any detected concepts that aren't flagged
+                if "concepts" in result:
+                    for concept in result["concepts"]:
+                        # Skip the current concept as it might be flagged
+                        if concept.get("is_current", False):
+                            continue
+                            
+                        await save_other_concept(
+                            concept_name=concept.get("concept_name", "Unknown Concept"),
+                            text_snippet=concept.get("text_snippet", ""),
+                            difficulty_level=concept.get("difficulty_level", 1),
+                            start_position=concept.get("start_position", 0),
+                            end_position=concept.get("end_position", 0),
+                            transcript_id=transcript_id,
+                            lecture_id=lecture_id
+                        )
+                
+                # Generate and save organized notes
+                # Call Gemini to create organized notes
+                organized_content = await gemini_service.generate_organized_notes(transcript)
+                
+                # Save the organized notes
+                await save_organized_notes(
+                    user_id=user_id,
+                    lecture_id=lecture_id,
+                    title=organized_content.get("title", "Untitled Lecture"),
+                    content=organized_content.get("content", ""),
+                    raw_transcript=transcript
+                )
             
     except WebSocketDisconnect:
         await websocket.close()
@@ -60,6 +113,9 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
     """
     await websocket.accept()
     session_id = None
+    user_id = None
+    lecture_id = None
+    transcript_id = None
     
     try:
         # First, get initialization parameters
@@ -80,6 +136,9 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
                     if result.get("is_final", False) and result.get("full_transcript"):
                         full_transcript = result.get("full_transcript")
                         
+                        # Save the transcript to the database
+                        transcript_id = await save_transcript(user_id, lecture_id, full_transcript)
+                        
                         # Process with Gemini service
                         gemini_result = await gemini_service.process_audio_transcript(
                             full_transcript,
@@ -89,6 +148,34 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
                         # Add the processed concepts to the result
                         result["concepts"] = gemini_result.get("concepts", [])
                         result["current_concept"] = gemini_result.get("current_concept")
+                        
+                        # Save detected concepts that aren't flagged
+                        for concept in gemini_result.get("concepts", []):
+                            # Skip the current concept as it might be flagged
+                            if concept.get("is_current", False):
+                                continue
+                                
+                            await save_other_concept(
+                                concept_name=concept.get("concept_name", "Unknown Concept"),
+                                text_snippet=concept.get("text_snippet", ""),
+                                difficulty_level=concept.get("difficulty_level", 1),
+                                start_position=concept.get("start_position", 0),
+                                end_position=concept.get("end_position", 0),
+                                transcript_id=transcript_id,
+                                lecture_id=lecture_id
+                            )
+                        
+                        # Generate and save organized notes
+                        organized_content = await gemini_service.generate_organized_notes(full_transcript)
+                        
+                        # Save the organized notes
+                        await save_organized_notes(
+                            user_id=user_id,
+                            lecture_id=lecture_id,
+                            title=organized_content.get("title", "Untitled Lecture"),
+                            content=organized_content.get("content", ""),
+                            raw_transcript=full_transcript
+                        )
                     
                     # Send result to client
                     await websocket.send_json(result)
@@ -166,9 +253,25 @@ async def flag_concept_websocket(websocket: WebSocket) -> None:
             
             concept_name = flag_data.get("concept_name", "")
             context = flag_data.get("context", "")
+            user_id = flag_data.get("user_id")
+            lecture_id = flag_data.get("lecture_id")
+            transcript_id = flag_data.get("transcript_id")
+            difficulty_level = flag_data.get("difficulty_level", 3)
             
             # Get explanation for the flagged concept
             result = await gemini_service.explain_concept(concept_name, context)
+            
+            # Save to database
+            if result and "explanation" in result:
+                await save_flagged_concept(
+                    concept_name=concept_name,
+                    explanation=result.get("explanation", ""),
+                    context=context,
+                    difficulty_level=difficulty_level,
+                    transcript_id=transcript_id,
+                    lecture_id=lecture_id,
+                    user_id=user_id
+                )
             
             # Send the explanation back
             await websocket.send_json(result)
@@ -188,8 +291,23 @@ async def flagged_history_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
     
     try:
-        # Just retrieve the history - no need for continuous updates
-        result = await gemini_service.get_flagged_history()
+        # Receive request data
+        data = await websocket.receive_text()
+        request_data = json.loads(data)
+        
+        # Extract user_id if provided
+        user_id = request_data.get("user_id")
+        
+        # Retrieve flagged concepts from database
+        flagged_concepts = await get_flagged_concepts(user_id)
+        
+        # Format for client
+        result = {
+            "status": "success",
+            "flagged_concepts": [concept.dict() for concept in flagged_concepts]
+        }
+        
+        # Send the results
         await websocket.send_json(result)
             
     except WebSocketDisconnect:

@@ -1,31 +1,140 @@
-from motor.motor_asyncio import AsyncIOMotorClient
+import motor.motor_asyncio
 from beanie import init_beanie
+import logging
 import os
-from dotenv import load_dotenv
-from typing import List, Type
+from typing import List, Optional, Dict, Any
 
-# Import models
-from backend.src.database.models import Transcript, FlaggedConcept
+from backend.src.database.models import Transcript, FlaggedConcept, OrganizedNotes, OtherConcept
 
-load_dotenv()
+# Set up logging
+logger = logging.getLogger(__name__)
 
-# MongoDB URL from environment variable
-MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
-
-# Create MongoDB client
-client = AsyncIOMotorClient(MONGODB_URL)
-db = client.lahacks
-
-# Get database function for direct MongoDB access
-async def get_database():
-    return db
-
-# Initialize Beanie with the database and document models
 async def init_db():
-    await init_beanie(
-        database=client.lahacks,
-        document_models=[
-            Transcript,
-            FlaggedConcept
-        ]
-    ) 
+    """Initialize database connection and register models with Beanie"""
+    try:
+        # Get connection details from environment
+        mongodb_url = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+        db_name = os.getenv("DATABASE_NAME", "clarifai")
+        
+        # Create Motor client
+        client = motor.motor_asyncio.AsyncIOMotorClient(mongodb_url)
+        
+        # Initialize Beanie with our document models
+        await init_beanie(
+            database=client[db_name],
+            document_models=[
+                Transcript,
+                FlaggedConcept,
+                OrganizedNotes,
+                OtherConcept
+            ]
+        )
+        
+        logger.info(f"Connected to MongoDB: {mongodb_url}, Database: {db_name}")
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize database: {str(e)}")
+        return False
+
+# Transcript operations
+async def save_transcript(user_id: Optional[str], lecture_id: Optional[str], text: str) -> str:
+    """Save a transcript and return its ID"""
+    transcript = Transcript(
+        user_id=user_id,
+        lecture_id=lecture_id,
+        text=text
+    )
+    await transcript.insert()
+    return str(transcript.id)
+
+async def get_transcript(transcript_id: str) -> Optional[Transcript]:
+    """Retrieve a transcript by ID"""
+    return await Transcript.get(transcript_id)
+
+async def get_user_transcripts(user_id: str) -> List[Transcript]:
+    """Get all transcripts for a specific user"""
+    return await Transcript.find({"user_id": user_id}).to_list()
+
+# OrganizedNotes operations
+async def save_organized_notes(
+    user_id: Optional[str], 
+    lecture_id: Optional[str], 
+    title: str,
+    content: str,
+    raw_transcript: str
+) -> str:
+    """Save organized notes and return its ID"""
+    notes = OrganizedNotes(
+        user_id=user_id,
+        lecture_id=lecture_id,
+        title=title,
+        content=content,
+        raw_transcript=raw_transcript
+    )
+    await notes.insert()
+    return str(notes.id)
+
+async def get_organized_notes(notes_id: str) -> Optional[OrganizedNotes]:
+    """Retrieve organized notes by ID"""
+    return await OrganizedNotes.get(notes_id)
+
+async def get_user_notes(user_id: str) -> List[OrganizedNotes]:
+    """Get all organized notes for a specific user"""
+    return await OrganizedNotes.find({"user_id": user_id}).to_list()
+
+# FlaggedConcept operations
+async def save_flagged_concept(
+    concept_name: str,
+    explanation: str,
+    context: str,
+    difficulty_level: int,
+    transcript_id: Optional[str] = None,
+    lecture_id: Optional[str] = None,
+    user_id: Optional[str] = None
+) -> str:
+    """Save a flagged concept and return its ID"""
+    concept = FlaggedConcept(
+        concept_name=concept_name,
+        explanation=explanation,
+        context=context,
+        difficulty_level=difficulty_level,
+        transcript_id=transcript_id,
+        lecture_id=lecture_id,
+        user_id=user_id
+    )
+    await concept.insert()
+    return str(concept.id)
+
+async def get_flagged_concepts(user_id: Optional[str] = None) -> List[FlaggedConcept]:
+    """Get flagged concepts, optionally filtered by user"""
+    query = {"user_id": user_id} if user_id else {}
+    return await FlaggedConcept.find(query).to_list()
+
+# OtherConcept operations
+async def save_other_concept(
+    concept_name: str,
+    text_snippet: str,
+    difficulty_level: int,
+    start_position: int,
+    end_position: int,
+    transcript_id: Optional[str] = None,
+    lecture_id: Optional[str] = None
+) -> str:
+    """Save a detected but unflagged concept and return its ID"""
+    concept = OtherConcept(
+        concept_name=concept_name,
+        text_snippet=text_snippet,
+        difficulty_level=difficulty_level,
+        start_position=start_position,
+        end_position=end_position,
+        transcript_id=transcript_id,
+        lecture_id=lecture_id
+    )
+    await concept.insert()
+    return str(concept.id)
+
+async def get_other_concepts(transcript_id: Optional[str] = None) -> List[OtherConcept]:
+    """Get unflagged concepts, optionally filtered by transcript"""
+    query = {"transcript_id": transcript_id} if transcript_id else {}
+    return await OtherConcept.find(query).to_list() 
