@@ -14,7 +14,7 @@ active_connections = {}
 # Import services
 from backend.src.services.gemini import GeminiService
 from backend.src.services.audio import create_transcription_service
-from backend.src.services.tts import create_tts_service
+from backend.src.services.croq import create_tts_service
 
 # Import database functions
 from backend.src.database.db import (
