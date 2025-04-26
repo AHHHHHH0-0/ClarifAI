@@ -3,6 +3,7 @@ from starlette.websockets import WebSocketState
 from typing import Dict, Any
 import json
 import logging
+import base64
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -13,6 +14,7 @@ active_connections = {}
 # Import services
 from backend.src.services.gemini import GeminiService
 from backend.src.services.audio import create_transcription_service
+from backend.src.services.tts import create_tts_service
 
 # Import database functions
 from backend.src.database.db import (
@@ -26,6 +28,7 @@ from backend.src.database.db import (
 # Initialize services
 gemini_service = GeminiService()
 transcription_service = create_transcription_service()
+tts_service = create_tts_service()
 
 async def process_audio_websocket(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -347,5 +350,160 @@ async def evaluate_understanding_websocket(websocket: WebSocket) -> None:
             "message": str(e)
         })
     finally:
+        if websocket.client_state == WebSocketState.CONNECTED:
+            await websocket.close()
+
+async def teach_to_learn_websocket(websocket: WebSocket) -> None:
+    """
+    WebSocket endpoint for the teach-to-learn mode that combines:
+    - Speech-to-text for user input
+    - AI evaluation and teaching responses
+    - Text responses for client-side TTS (using Web Speech API)
+    
+    The frontend only shows a progress bar, and handles text-to-speech in the browser.
+    """
+    await websocket.accept()
+    session_id = None
+    conversation_history = []
+    current_topic = None
+    understanding_score = 0
+    
+    try:
+        # First, get initialization parameters
+        init_data = await websocket.receive_text()
+        params = json.loads(init_data)
+        
+        # Extract user info and topic
+        user_id = params.get("user_id")
+        current_topic = params.get("topic", "")
+        
+        if not current_topic:
+            await websocket.send_json({
+                "status": "error",
+                "message": "No topic specified for teach-to-learn mode"
+            })
+            return
+            
+        logger.info(f"Starting teach-to-learn session for user {user_id} on topic: {current_topic}")
+        
+        # Send initial question as text for client-side TTS
+        initial_question = f"Let's discuss the topic of {current_topic}. What do you understand about it so far?"
+        
+        # Send initial question
+        await websocket.send_json({
+            "status": "question",
+            "understanding_score": 0,  # Initial score
+            "text": initial_question,  # Text for client-side TTS
+            "use_client_tts": True     # Flag to use client-side TTS
+        })
+        
+        # Add to conversation history
+        conversation_history.append({"ai": initial_question})
+        
+        # Define callback function to process user speech
+        async def transcription_callback(result: Dict[str, Any]):
+            nonlocal understanding_score, conversation_history
+            
+            if websocket.client_state == WebSocketState.CONNECTED:
+                try:
+                    # If this is a final result with a transcript
+                    if result.get("is_final", False) and result.get("transcript"):
+                        user_response = result.get("transcript")
+                        
+                        # Add to conversation history
+                        conversation_history.append({"user": user_response})
+                        
+                        # Process with Gemini service
+                        teaching_result = await gemini_service.teach_to_learn(
+                            current_topic,
+                            user_response,
+                            conversation_history
+                        )
+                        
+                        # Update understanding score
+                        understanding_score = teaching_result.get("understanding_score", understanding_score)
+                        
+                        # Prepare AI response
+                        ai_response = teaching_result.get("response", "")
+                        follow_up = teaching_result.get("follow_up_question", "")
+                        full_response = f"{ai_response} {follow_up}"
+                        
+                        # Add to conversation history
+                        conversation_history.append({"ai": full_response})
+                        
+                        # Check if learning is complete
+                        is_complete = teaching_result.get("is_complete", False)
+                        
+                        # Send response as text for client-side TTS
+                        await websocket.send_json({
+                            "status": "response",
+                            "understanding_score": understanding_score,
+                            "is_complete": is_complete,
+                            "text": full_response,
+                            "use_client_tts": True
+                        })
+                            
+                except Exception as e:
+                    logger.error(f"Error in teach-to-learn callback: {str(e)}")
+        
+        # Start a new transcription session with the callback
+        session_id = await transcription_service.start_transcription_session(
+            user_id=user_id,
+            callback=transcription_callback
+        )
+        
+        # Store the WebSocket connection for reference
+        active_connections[session_id] = websocket
+        
+        # Listen for audio chunks from the client
+        while True:
+            # Receive audio chunk from the client
+            data = await websocket.receive_text()
+            audio_data = json.loads(data)
+            
+            # Extract base64 audio
+            base64_audio = audio_data.get("audio", "")
+            if not base64_audio:
+                await websocket.send_json({
+                    "status": "error",
+                    "message": "No audio data provided"
+                })
+                continue
+            
+            # Check if user wants to stop
+            if audio_data.get("stop", False):
+                # Send completion message
+                completion_message = f"Great work on learning about {current_topic}! You've reached an understanding score of {understanding_score}%."
+                
+                await websocket.send_json({
+                    "status": "complete",
+                    "understanding_score": understanding_score,
+                    "text": completion_message,
+                    "use_client_tts": True
+                })
+                break
+            
+            # Send to Deepgram (response comes through the callback)
+            await transcription_service.transcribe_audio(
+                base64_audio, 
+                session_id,
+                user_id
+            )
+            
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for teach-to-learn session {session_id}")
+    except Exception as e:
+        logger.error(f"Error in teach-to-learn: {str(e)}")
+        if websocket.client_state == WebSocketState.CONNECTED:
+            await websocket.send_json({
+                "status": "error",
+                "message": str(e)
+            })
+    finally:
+        # Clean up
+        if session_id:
+            await transcription_service.end_session(session_id)
+            active_connections.pop(session_id, None)
+        
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close() 
