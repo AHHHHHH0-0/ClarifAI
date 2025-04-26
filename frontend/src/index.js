@@ -1,13 +1,15 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./index.css";
-import AudioRecorder from "./components/AudioRecorder.jsx";
+import App from './App';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
+
 root.render(
   <React.StrictMode>
-    <div className="app-container">
-      <AudioRecorder />
-    </div>
+    <GoogleOAuthProvider clientId="807669090767-e0u4q2jqm4np373mtc473ma1v388g6ca.apps.googleusercontent.com">
+      <App />
+    </GoogleOAuthProvider>
   </React.StrictMode>
-);
+); 

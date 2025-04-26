@@ -16,11 +16,8 @@ const mockTranscript = [
 const DashboardPage: React.FC = () => {
   const [mode, setMode] = useState<'student' | 'teacher'>('student');
   const [selectedConv, setSelectedConv] = useState(1);
-  const [isRecording, setIsRecording] = useState(false);
   const [transcript, setTranscript] = useState(mockTranscript);
 
-  const handleStart = () => setIsRecording(true);
-  const handleStop = () => setIsRecording(false);
   const handleConfused = () => {
     alert('Explain: Photosynthesis is the process by which green plants convert sunlight into energy.');
   };
@@ -73,23 +70,10 @@ const DashboardPage: React.FC = () => {
         {/* Bottom Center Controls */}
         <div className="absolute left-1/2 bottom-8 transform -translate-x-1/2 flex gap-6">
           <button
-            className="bg-red-500 hover:bg-red-600 text-white px-6 py-2 rounded-lg font-semibold shadow transition"
-            onClick={handleStop}
-            disabled={!isRecording}
-          >
-            Stop
-          </button>
-          <button
-            className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-2 rounded-lg font-semibold shadow transition"
-            onClick={isRecording ? handleStop : handleStart}
-          >
-            {isRecording ? 'Pause' : 'Start'}
-          </button>
-          <button
             className="bg-amber-400 hover:bg-amber-500 text-slate-700 px-6 py-2 rounded-lg font-semibold shadow transition"
             onClick={handleConfused}
           >
-            Confused
+            Ask for Clarification
           </button>
         </div>
       </main>
