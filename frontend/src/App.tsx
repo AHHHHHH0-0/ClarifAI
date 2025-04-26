@@ -2,6 +2,7 @@ import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import LoginPage from './LoginPage';
 import HeroSection from './components/Hero/HeroSection';
+import DashboardPage from './DashboardPage';
 
 function HomePage() {
   return (
@@ -30,6 +31,7 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/dashboard" element={<DashboardPage />} />
         {/* Add more routes here */}
       </Routes>
     </BrowserRouter>
