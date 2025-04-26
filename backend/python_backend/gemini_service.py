@@ -1,6 +1,6 @@
 import os
 from typing import Dict, Any, List, Optional
-from google import genai
+from google import generativeai as genai
 import json
 import re
 from datetime import datetime
@@ -16,7 +16,8 @@ class GeminiService:
         if not api_key:
             raise ValueError("GEMINI_API_KEY not found in environment variables")
         
-        genai.configure(api_key=api_key)
+        # Set the API key for Google Generative AI
+        genai.api_key = api_key
         # Using Gemini 2.5 Flash model
         self.model = genai.GenerativeModel('models/gemini-2.5-flash-preview-04-17')
         self.flagged_concepts: List[Dict[str, Any]] = []  # Track flagged concepts
