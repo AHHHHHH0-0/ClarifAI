@@ -8,8 +8,8 @@ from pydantic import BaseModel
 
 load_dotenv()  # Load environment variables at application startup
 
-from gemini_service import GeminiService
-from audio_service import create_transcription_service
+from src.gemini_service import GeminiService
+from src.audio_service import create_transcription_service
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

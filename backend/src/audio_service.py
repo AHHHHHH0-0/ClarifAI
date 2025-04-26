@@ -9,10 +9,15 @@ from dotenv import load_dotenv
 import websockets
 from uuid import uuid4
 from datetime import datetime
-from bson.objectid import ObjectId
 
-# DB connection
-from database import get_database
+# Conditionally import MongoDB dependencies
+try:
+    from bson.objectid import ObjectId
+    from .database import get_database
+    MONGODB_AVAILABLE = True
+except ImportError:
+    MONGODB_AVAILABLE = False
+    logging.warning("MongoDB dependencies not available. Database operations will be skipped.")
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -30,6 +35,8 @@ class DeepgramConfig(BaseModel):
     diarize: bool = False
     interim_results: bool = True
     endpointing: Optional[int] = 200
+    demo_mode: bool = False  # Add demo mode option
+    skip_db: bool = False  # Add option to skip database operations
 
 class TranscriptionService:
     def __init__(self, config: Optional[DeepgramConfig] = None):
@@ -41,9 +48,13 @@ class TranscriptionService:
         """
         self.config = config or DeepgramConfig()
         self.api_key = self.config.api_key or os.getenv("DEEPGRAM_API_KEY")
+        self.demo_mode = self.config.demo_mode
+        self.skip_db = self.config.skip_db or not MONGODB_AVAILABLE
         
-        if not self.api_key:
-            raise ValueError("Deepgram API key not found. Set DEEPGRAM_API_KEY environment variable.")
+        # Only validate API key if not in demo mode
+        if not self.api_key and not self.demo_mode:
+            logger.warning("Deepgram API key not found. Starting in demo mode.")
+            self.demo_mode = True
             
         self.transcription_buffer = ""
         self.ws_connections: Dict[str, Any] = {}
@@ -58,6 +69,10 @@ class TranscriptionService:
             user_id: User ID (if authenticated)
             lecture_id: Optional lecture ID if associated with a specific lecture
         """
+        if self.skip_db:
+            logger.info(f"Skipping database storage for session {session_id}")
+            return
+            
         try:
             # Convert string IDs to ObjectId if provided
             user_id_obj = ObjectId(user_id) if user_id else None
@@ -89,6 +104,9 @@ class TranscriptionService:
         Args:
             session_id: Session identifier
         """
+        if self.skip_db:
+            return
+            
         try:
             db = await get_database()
             await db.transcription_sessions.update_one(
@@ -110,6 +128,9 @@ class TranscriptionService:
         Args:
             session_id: Session identifier
         """
+        if self.skip_db:
+            return
+            
         try:
             db = await get_database()
             await db.transcription_sessions.update_one(
@@ -133,6 +154,18 @@ class TranscriptionService:
             session_id: Unique identifier for the session
         """
         try:
+            # If in demo mode, simulate connection instead of connecting to Deepgram
+            if self.demo_mode:
+                logger.info(f"DEMO MODE: Simulating Deepgram connection for session {session_id}")
+                # Start demo listener
+                asyncio.create_task(self._simulate_transcripts(session_id))
+                # Store fake connection info
+                self.ws_connections[session_id] = {
+                    "connection": None,
+                    "is_active": True
+                }
+                return
+                
             # Deepgram WebSocket URL with parameters
             url = "wss://api.deepgram.com/v1/listen?"
             params = {
@@ -257,6 +290,42 @@ class TranscriptionService:
                 "session_id": session_id
             }
     
+    async def _simulate_transcripts(self, session_id: str):
+        """
+        Simulate transcription results for demo mode.
+        
+        Args:
+            session_id: Session identifier
+        """
+        try:
+            # Continue while session is active
+            while self.ws_connections.get(session_id, {}).get("is_active", False):
+                # Wait a bit to simulate processing time
+                await asyncio.sleep(2)
+                
+                # Create a demo transcript
+                demo_transcript = {
+                    "status": "success",
+                    "session_id": session_id,
+                    "transcript": "This is a demo transcript. No actual speech processing is happening.",
+                    "full_transcript": "This is a demo transcript. No actual speech processing is happening.",
+                    "confidence": 0.95,
+                    "is_final": True,
+                    "timestamp": asyncio.get_event_loop().time()
+                }
+                
+                # Process callbacks
+                if session_id in self.callbacks:
+                    for callback in self.callbacks[session_id]:
+                        await callback(demo_transcript)
+                        
+        except Exception as e:
+            logger.error(f"Error in demo transcript simulation: {str(e)}")
+        finally:
+            # Mark connection as inactive when done
+            if session_id in self.ws_connections:
+                self.ws_connections[session_id]["is_active"] = False
+    
     async def start_transcription_session(self, user_id: str = None, lecture_id: str = None, callback: Optional[Callable] = None) -> str:
         """
         Start a new transcription session.
@@ -300,8 +369,8 @@ class TranscriptionService:
             Dict with session info
         """
         try:
-            # Decode base64 if needed
-            if is_base64:
+            # Decode base64 if needed (skip actual decoding in demo mode)
+            if is_base64 and not self.demo_mode:
                 try:
                     audio_data = base64.b64decode(audio_data)
                 except Exception as e:
@@ -321,6 +390,14 @@ class TranscriptionService:
             if not conn_info or not conn_info.get("is_active", False):
                 return {"status": "error", "message": "No active connection", "session_id": session_id}
             
+            # In demo mode, just acknowledge receipt without sending to Deepgram
+            if self.demo_mode:
+                return {
+                    "status": "processing",
+                    "session_id": session_id,
+                    "message": "DEMO MODE: Audio received and processing"
+                }
+                
             # Send audio to Deepgram
             await conn_info["connection"].send(audio_data)
             
@@ -388,5 +465,14 @@ def create_transcription_service(config: Optional[Dict[str, Any]] = None) -> Tra
     Returns:
         Configured TranscriptionService
     """
-    deepgram_config = DeepgramConfig(**config) if config else DeepgramConfig()
+    config_dict = config or {}
+    # Default to demo mode for easy testing
+    if "demo_mode" not in config_dict:
+        config_dict["demo_mode"] = True  # Set demo mode to true by default
+    
+    # Skip database operations by default for testing
+    if "skip_db" not in config_dict:
+        config_dict["skip_db"] = True
+        
+    deepgram_config = DeepgramConfig(**config_dict)
     return TranscriptionService(deepgram_config) 
