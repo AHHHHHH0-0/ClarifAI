@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter, Routes, Route } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import LoginPage from './LoginPage';
 import HeroSection from './components/Hero/HeroSection';
 import DashboardPage from './DashboardPage';
@@ -14,6 +14,8 @@ function HomePage() {
             <a href="#features" className="text-gray-600 hover:text-accent">Features</a>
             <a href="#how-it-works" className="text-gray-600 hover:text-accent">How It Works</a>
             <a href="#pricing" className="text-gray-600 hover:text-accent">Pricing</a>
+            <Link to="/login" className="text-gray-600 hover:text-accent">Login</Link>
+            <Link to="/dashboard" className="text-gray-600 hover:text-accent">Dashboard</Link>
           </nav>
         </div>
       </header>
@@ -32,7 +34,6 @@ function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        {/* Add more routes here */}
       </Routes>
     </BrowserRouter>
   );

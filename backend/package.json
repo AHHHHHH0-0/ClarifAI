@@ -23,6 +23,7 @@
   "scripts": {
     "start": "nodemon src/index.ts",
     "build": "tsc",
-    "prod": "node dist/index.js"
+    "prod": "node dist/index.tsx"
   }
 }
+
