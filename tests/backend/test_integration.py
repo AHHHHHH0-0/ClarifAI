@@ -12,11 +12,11 @@ import asyncio
 from dotenv import load_dotenv
 
 # Load environment variables from .env files
-load_dotenv(os.path.join("backend", "python_backend", ".env"))
+load_dotenv(os.path.join("backend", "src", ".env"))
 
 # Add the backend path to allow imports
 import sys
-sys.path.append(os.path.abspath("backend/python_backend"))
+sys.path.append(os.path.abspath("backend/src"))
 
 # Set a mock API key for testing to prevent actual API calls
 os.environ["GEMINI_API_KEY"] = "fake-test-key"

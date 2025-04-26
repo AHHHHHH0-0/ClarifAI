@@ -10,9 +10,9 @@ from unittest.mock import patch, MagicMock, AsyncMock
 from fastapi.websockets import WebSocket
 from fastapi import WebSocketDisconnect
 
-# Add the backend path dynamically based on this file's location
+# Change backend path to new src folder
 script_dir = os.path.dirname(os.path.abspath(__file__))
-backend_path = os.path.abspath(os.path.join(script_dir, '..', '..', 'backend', 'python_backend'))
+backend_path = os.path.abspath(os.path.join(script_dir, '..', '..', 'backend', 'src'))
 sys.path.append(backend_path)
 
 # Set a mock API key for testing to prevent actual API calls
