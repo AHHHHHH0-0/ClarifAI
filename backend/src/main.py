@@ -2,12 +2,19 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from typing import Dict, Any
 import json
+import logging
 from dotenv import load_dotenv
 from pydantic import BaseModel
+import asyncio
 
 load_dotenv()  # Load environment variables at application startup
 
 from gemini_service import GeminiService
+from audio_service import create_transcription_service
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = FastAPI(
     title="ClarifAI API",
@@ -24,8 +31,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Gemini service
+# Initialize services
 gemini_service = GeminiService()
+transcription_service = create_transcription_service()
+
+# Store active WebSocket connections
+active_connections = {}
 
 @app.websocket("/ws/process-audio")
 async def process_audio_websocket(websocket: WebSocket) -> None:
@@ -55,11 +66,95 @@ async def process_audio_websocket(websocket: WebSocket) -> None:
     except WebSocketDisconnect:
         await websocket.close()
     except Exception as e:
+        logger.error(f"Error in process-audio: {str(e)}")
         await websocket.send_json({
             "status": "error",
             "message": str(e)
         })
     finally:
+        if websocket.client_state.CONNECTED:
+            await websocket.close()
+
+@app.websocket("/ws/audio-to-text")
+async def audio_to_text_websocket(websocket: WebSocket) -> None:
+    """
+    WebSocket endpoint to receive raw audio data and convert it to text using Deepgram.
+    """
+    await websocket.accept()
+    session_id = None
+    
+    # Define callback function to forward transcription to client
+    async def transcription_callback(result: Dict[str, Any]):
+        if websocket.client_state.CONNECTED:
+            try:
+                # If this is a final result with a transcript, also process with Gemini
+                if result.get("is_final", False) and result.get("full_transcript"):
+                    full_transcript = result.get("full_transcript")
+                    
+                    # Process with Gemini service
+                    gemini_result = await gemini_service.process_audio_transcript(
+                        full_transcript,
+                        ""  # No previous transcript needed as service manages the buffer
+                    )
+                    
+                    # Add the processed concepts to the result
+                    result["concepts"] = gemini_result.get("concepts", [])
+                    result["current_concept"] = gemini_result.get("current_concept")
+                
+                # Send result to client
+                await websocket.send_json(result)
+            except Exception as e:
+                logger.error(f"Error in transcription callback: {str(e)}")
+    
+    try:
+        # Start a new transcription session with the callback
+        session_id = await transcription_service.start_transcription_session(transcription_callback)
+        
+        # Store the WebSocket connection for reference
+        active_connections[session_id] = websocket
+        
+        # Send initial confirmation
+        await websocket.send_json({
+            "status": "connected",
+            "session_id": session_id,
+            "message": "Connected to Deepgram streaming API"
+        })
+        
+        # Listen for audio chunks from the client
+        while True:
+            # Receive audio chunk from the client
+            data = await websocket.receive_text()
+            audio_data = json.loads(data)
+            
+            # Extract base64 audio
+            base64_audio = audio_data.get("audio", "")
+            if not base64_audio:
+                await websocket.send_json({
+                    "status": "error",
+                    "message": "No audio data provided",
+                    "session_id": session_id
+                })
+                continue
+            
+            # Send to Deepgram (response comes through the callback)
+            await transcription_service.transcribe_audio(base64_audio, session_id)
+            
+    except WebSocketDisconnect:
+        logger.info(f"WebSocket disconnected for session {session_id}")
+    except Exception as e:
+        logger.error(f"Error in audio-to-text: {str(e)}")
+        if websocket.client_state.CONNECTED:
+            await websocket.send_json({
+                "status": "error",
+                "message": str(e),
+                "session_id": session_id if session_id else "unknown"
+            })
+    finally:
+        # Clean up
+        if session_id:
+            await transcription_service.end_session(session_id)
+            active_connections.pop(session_id, None)
+        
         if websocket.client_state.CONNECTED:
             await websocket.close()
 
