@@ -20,4 +20,4 @@ async def init_db():
         document_models=[
             User
         ]
-    )
+    ) 
