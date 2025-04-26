@@ -5,7 +5,6 @@ import json
 import logging
 from dotenv import load_dotenv
 from pydantic import BaseModel
-import asyncio
 
 load_dotenv()  # Load environment variables at application startup
 
