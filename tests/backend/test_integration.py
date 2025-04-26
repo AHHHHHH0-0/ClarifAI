@@ -23,8 +23,8 @@ sys.path.append(os.path.abspath("backend/src"))
 os.environ["GEMINI_API_KEY"] = "fake-test-key"
 
 # Import the modules after setting up environment
-from main import app
-from gemini_service import GeminiService
+from backend.src.main import app, process_audio_websocket, flag_concept_websocket, flagged_history_websocket, evaluate_understanding_websocket
+from backend.src.gemini_service import GeminiService
 
 # Mock the actual API calls to Gemini
 @pytest.fixture
@@ -49,7 +49,7 @@ def mock_gemini_api():
 
 @pytest.fixture
 def mock_gemini_service():
-    with patch('main.gemini_service') as service_instance:
+    with patch('backend.src.main.gemini_service') as service_instance:
         # Mock process_audio_transcript
         async def mock_process_audio(*args, **kwargs):
             return {
@@ -137,9 +137,6 @@ async def test_process_audio_websocket(mock_gemini_service):
     mock_client_state.CONNECTED = True
     mock_websocket.client_state = mock_client_state
     
-    # Import the websocket handler
-    from main import process_audio_websocket
-    
     # Call the handler with our mock
     await process_audio_websocket(mock_websocket)
     
@@ -175,9 +172,6 @@ async def test_flag_concept_websocket(mock_gemini_service):
     mock_client_state.CONNECTED = True
     mock_websocket.client_state = mock_client_state
     
-    # Import the websocket handler
-    from main import flag_concept_websocket
-    
     # Call the handler with our mock
     await flag_concept_websocket(mock_websocket)
     
@@ -207,9 +201,6 @@ async def test_flagged_history_websocket(mock_gemini_service):
     mock_client_state = MagicMock()
     mock_client_state.CONNECTED = True
     mock_websocket.client_state = mock_client_state
-    
-    # Import the websocket handler
-    from main import flagged_history_websocket
     
     # Call the handler with our mock
     await flagged_history_websocket(mock_websocket)
@@ -241,9 +232,6 @@ async def test_evaluate_understanding_websocket(mock_gemini_service):
     mock_client_state.CONNECTED = True
     mock_websocket.client_state = mock_client_state
     
-    # Import the websocket handler
-    from main import evaluate_understanding_websocket
-    
     # Call the handler with our mock
     await evaluate_understanding_websocket(mock_websocket)
     
@@ -274,9 +262,6 @@ async def test_websocket_exception_handling(mock_gemini_service):
     mock_client_state = MagicMock()
     mock_client_state.CONNECTED = True
     mock_websocket.client_state = mock_client_state
-    
-    # Import the websocket handler
-    from main import process_audio_websocket
     
     # Call the handler with our mock
     await process_audio_websocket(mock_websocket)
