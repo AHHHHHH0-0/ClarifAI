@@ -59,9 +59,19 @@ const LoginPage: React.FC = () => {
       const idToken = await user.getIdToken();
       console.log('ID Token:', idToken);
       await sendUserToBackend({ email: user.email, name: user.displayName, idToken });
+      // Store user info for dashboard personalization
+      localStorage.setItem("userName", user.displayName || user.email || "User");
       window.location.href = '/dashboard';
     } catch (err: any) {
-      setError(err.message || (mode === 'login' ? 'Login failed' : 'Signup failed'));
+      if (err.code === "auth/user-not-found") {
+        setError("Account does not exist. Please sign up first.");
+      } else if (err.code === "auth/wrong-password") {
+        setError("Incorrect password. Please try again.");
+      } else if (err.code === "auth/invalid-credential") {
+        setError("Account does not exist. Please sign up first.");
+      } else {
+        setError(err.message || (mode === 'login' ? 'Login failed' : 'Signup failed'));
+      }
     } finally {
       setLoading(false);
     }

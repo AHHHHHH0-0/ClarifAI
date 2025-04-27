@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 const mockConversations = [
   { id: 1, name: 'Biology Lecture' },
@@ -17,6 +17,11 @@ const DashboardPage: React.FC = () => {
   const [mode, setMode] = useState<'student' | 'teacher'>('student');
   const [selectedConv, setSelectedConv] = useState(1);
   const [transcript, setTranscript] = useState(mockTranscript);
+  const [userName, setUserName] = useState<string | null>(null);
+
+  useEffect(() => {
+    setUserName(localStorage.getItem("userName"));
+  }, []);
 
   const handleConfused = () => {
     alert('Explain: Photosynthesis is the process by which green plants convert sunlight into energy.');
@@ -28,7 +33,7 @@ const DashboardPage: React.FC = () => {
       <aside className="w-20 bg-white border-r border-gray-200 flex flex-col items-center py-4">
         {/* Profile icon */}
         <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center mb-4">
-          <span className="text-blue-500 font-bold text-lg">U</span>
+          <span className="text-blue-500 font-bold text-lg">{userName ? userName[0].toUpperCase() : 'U'}</span>
         </div>
         {/* New conversation */}
         <button className="w-10 h-10 rounded-full bg-emerald-100 flex items-center justify-center mb-6 hover:bg-emerald-200 transition">
@@ -50,6 +55,10 @@ const DashboardPage: React.FC = () => {
 
       {/* Main content */}
       <main className="flex-1 flex flex-col relative">
+        {/* Personalized welcome */}
+        <div className="mt-6 ml-8">
+          <h1 className="text-2xl font-bold text-slate-700">Welcome{userName ? `, ${userName}` : ''}!</h1>
+        </div>
         {/* Mode Switch */}
         <div className="flex gap-0 mt-6 ml-8">
           <button
