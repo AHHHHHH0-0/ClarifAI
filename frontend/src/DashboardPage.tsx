@@ -140,19 +140,6 @@ const DashboardPage: React.FC = () => {
         )}
       </main>
 
-      {/* Transcript Sidebar */}
-      <aside className="w-80 bg-background border-l border-border flex flex-col">
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-          <span className="inline-block w-6 h-6 bg-primary-light/10 rounded-full flex items-center justify-center text-primary font-bold">T</span>
-          <span className="font-heading font-bold text-text text-lg">Transcript</span>
-        </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4 text-text-muted text-sm">
-          {transcript.map((line, idx) => (
-            <div key={idx} className="mb-2">{line}</div>
-          ))}
-        </div>
-      </aside>
-
       <AudioToTextRecorder />
     </div>
   );

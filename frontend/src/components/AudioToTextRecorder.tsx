@@ -55,39 +55,48 @@ const AudioToTextRecorder: React.FC = () => {
   };
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <h2 style={{ marginLeft: 16 }}>Transcript</h2>
+    <div style={{ display: 'flex', flexDirection: 'row', height: '100%', width: '100%' }}>
+      {/* Main content area (for clarify component in the future) */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center' }}>
+        <div className="flex flex-col items-center gap-4" style={{ marginTop: 32 }}>
+          <button
+            className={`px-6 py-2 rounded font-semibold ${recording ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}
+            onClick={recording ? stopRecording : startRecording}
+          >
+            {recording ? 'Stop Recording' : 'Start Recording'}
+          </button>
+        </div>
+      </div>
+      {/* Transcript panel on the right */}
       <div
         style={{
-          flex: 1,
-          padding: 24,
-          overflowY: 'auto',
+          width: 400,
+          minWidth: 320,
+          maxWidth: 500,
+          height: '100%',
           background: '#f9f9f9',
-          borderRadius: 12,
-          margin: '16px',
-          fontSize: '1.2em',
-          minHeight: 200,
-          maxWidth: 700,
-          alignSelf: 'center',
-          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
-          border: '1px solid #e0e0e0',
-          width: '100%',
-          wordBreak: 'break-word',
-          whiteSpace: 'pre-wrap',
+          borderLeft: '2px solid #e0e0e0',
           display: 'flex',
           flexDirection: 'column',
+          padding: '32px 24px',
+          boxSizing: 'border-box',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.04)',
         }}
       >
-        <b style={{ fontSize: '1.1em', marginBottom: 8 }}>Live Transcript:</b>
-        <div style={{ whiteSpace: 'pre-wrap', marginTop: 8, width: '100%' }}>{transcript || <span style={{ color: '#bbb' }}>Start speaking to see the transcript...</span>}</div>
-      </div>
-      <div className="flex flex-col items-center gap-4">
-        <button
-          className={`px-6 py-2 rounded font-semibold ${recording ? 'bg-red-500 text-white' : 'bg-blue-500 text-white'}`}
-          onClick={recording ? stopRecording : startRecording}
+        <b style={{ fontSize: '1.2em', marginBottom: 16 }}>Transcript</b>
+        <div
+          style={{
+            flex: 1,
+            overflowY: 'auto',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            fontSize: '1.1em',
+            color: transcript ? '#222' : '#bbb',
+            marginTop: 8,
+          }}
         >
-          {recording ? 'Stop Recording' : 'Start Recording'}
-        </button>
+          {transcript || 'Start speaking to see the transcript...'}
+        </div>
       </div>
     </div>
   );
