@@ -38,10 +38,14 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Mount frontend build for single-container deployment
+from fastapi.staticfiles import StaticFiles
+app.mount("/", StaticFiles(directory="../frontend/build", html=True), name="static")
+
+# Update CORS to allow all origins during deployment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Update with your frontend URL
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
