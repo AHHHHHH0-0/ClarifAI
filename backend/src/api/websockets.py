@@ -20,10 +20,9 @@ from backend.src.services.audio import create_transcription_service
 
 # Import database functions
 from backend.src.database.db import (
-    save_transcript, 
-    save_flagged_concept, 
-    save_organized_notes,
-    save_other_concept,
+    save_lecture,
+    save_concept,
+    save_flagged_concept,
     get_flagged_concepts
 )
 
@@ -37,7 +36,6 @@ async def process_audio_websocket(websocket: WebSocket) -> None:
     previous_transcript = ""
     user_id = None
     lecture_id = None
-    transcript_id = None
     
     try:
         # Get initial data for identifying the user/lecture
@@ -66,38 +64,29 @@ async def process_audio_websocket(websocket: WebSocket) -> None:
             
             # If this is a final transcript, save it to the database
             if transcript_data.get("is_final", False):
-                # Save the raw transcript
-                transcript_id = await save_transcript(user_id, lecture_id, transcript)
+                # On final transcript, generate organized notes and save as a Lecture
+                organized_content = await gemini_service.generate_organized_notes(transcript)
+                lecture_id = await save_lecture(
+                    user_id=user_id,
+                    title=organized_content.get("title", "Untitled Lecture"),
+                    organized_notes=organized_content.get("content", "")
+                )
                 
-                # Save any detected concepts that aren't flagged
+                # Save all extracted concepts to the database
                 if "concepts" in result:
                     for concept in result["concepts"]:
-                        # Skip the current concept as it might be flagged
+                        # Skip current concept if desired
                         if concept.get("is_current", False):
                             continue
-                            
-                        await save_other_concept(
+                        await save_concept(
+                            user_id=user_id,
+                            lecture_id=lecture_id,
                             concept_name=concept.get("concept_name", "Unknown Concept"),
                             text_snippet=concept.get("text_snippet", ""),
                             difficulty_level=concept.get("difficulty_level", 1),
                             start_position=concept.get("start_position", 0),
-                            end_position=concept.get("end_position", 0),
-                            transcript_id=transcript_id,
-                            lecture_id=lecture_id
+                            end_position=concept.get("end_position", 0)
                         )
-                
-                # Generate and save organized notes
-                # Call Gemini to create organized notes
-                organized_content = await gemini_service.generate_organized_notes(transcript)
-                
-                # Save the organized notes
-                await save_organized_notes(
-                    user_id=user_id,
-                    lecture_id=lecture_id,
-                    title=organized_content.get("title", "Untitled Lecture"),
-                    content=organized_content.get("content", ""),
-                    raw_transcript=transcript
-                )
             
     except WebSocketDisconnect:
         await websocket.close()
@@ -164,29 +153,31 @@ async def flag_concept_websocket(websocket: WebSocket) -> None:
             # Receive concept flagging request
             data = await websocket.receive_text()
             flag_data = json.loads(data)
-            
-            concept_name = flag_data.get("concept_name", "")
-            context = flag_data.get("context", "")
+
             user_id = flag_data.get("user_id")
             lecture_id = flag_data.get("lecture_id")
-            transcript_id = flag_data.get("transcript_id")
+            concept_name = flag_data.get("concept_name", "")
+            text_snippet = flag_data.get("context", "")  # snippet from audio
             difficulty_level = flag_data.get("difficulty_level", 3)
-            
+            start_position = flag_data.get("start_position", 0)
+            end_position = flag_data.get("end_position", 0)
+
             # Get explanation for the flagged concept
-            result = await gemini_service.explain_concept(concept_name, context)
-            
-            # Save to database
+            result = await gemini_service.explain_concept(concept_name, text_snippet)
+
+            # Save flagged concept to database
             if result and "explanation" in result:
                 await save_flagged_concept(
+                    user_id=user_id,
+                    lecture_id=lecture_id,
                     concept_name=concept_name,
                     explanation=result.get("explanation", ""),
-                    context=context,
+                    text_snippet=text_snippet,
                     difficulty_level=difficulty_level,
-                    transcript_id=transcript_id,
-                    lecture_id=lecture_id,
-                    user_id=user_id
+                    start_position=start_position,
+                    end_position=end_position
                 )
-            
+
             # Send the explanation back
             await websocket.send_json(result)
             
