@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import Sidebar from "./components/Layout/Sidebar";
 import { auth } from "./firebase";
+import { speak } from "./utils/tts";
 
 // State for lectures fetched from backend
 interface LectureItem {
@@ -11,6 +12,8 @@ interface LectureItem {
 }
 const WS_LECTURES_URL =
   (process.env.REACT_APP_WS_URL || "ws://localhost:8000") + "/ws/lectures";
+const WS_PROCESS_URL =
+  (process.env.REACT_APP_WS_URL || "ws://localhost:8000") + "/ws/process-audio";
 
 /**
  * TeachToLearn page - Teacher mode interface with speech visualization
@@ -21,6 +24,11 @@ const TeachToLearn: React.FC = () => {
   const [selectedConv, setSelectedConv] = useState("");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [firstName, setFirstName] = useState("Student");
+  const [messages, setMessages] = useState<
+    { sender: "user" | "ai"; content: string }[]
+  >([]);
+  const wsRef = useRef<WebSocket | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
 
   const navigate = useNavigate();
 
@@ -64,8 +72,48 @@ const TeachToLearn: React.FC = () => {
   };
 
   // Toggle speaking state for demo purposes
-  const toggleSpeaking = () => {
-    setIsSpeaking(!isSpeaking);
+  const toggleSpeaking = async () => {
+    if (!isSpeaking) {
+      // Start recording & connect WebSocket
+      const user = auth.currentUser;
+      const ws = new WebSocket(WS_PROCESS_URL);
+      wsRef.current = ws;
+      ws.onopen = () => {
+        ws.send(
+          JSON.stringify({ user_id: user?.uid, lecture_id: selectedConv })
+        );
+        setIsSpeaking(true);
+      };
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.transcript) {
+            setMessages((prev) => [
+              ...prev,
+              { sender: "ai", content: data.transcript },
+            ]);
+            speak(data.transcript);
+          }
+        } catch {}
+      };
+      // Start media recorder
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: "audio/webm",
+      });
+      mediaRecorderRef.current = mediaRecorder;
+      mediaRecorder.start(250);
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+          event.data.arrayBuffer().then((buffer) => ws.send(buffer));
+        }
+      };
+    } else {
+      // Stop recording
+      mediaRecorderRef.current?.stop();
+      wsRef.current?.close();
+      setIsSpeaking(false);
+    }
   };
 
   return (
@@ -120,9 +168,23 @@ const TeachToLearn: React.FC = () => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 1 }}
-              className="w-full max-w-xl h-64 bg-white shadow-lg rounded-lg p-4 mb-6 overflow-y-auto"
+              className="w-full max-w-xl h-64 bg-white shadow-lg rounded-lg p-4 mb-6 overflow-y-auto flex flex-col"
             >
-              {/* Chatbox content will appear here */}
+              {/* Chatbox content */}
+              <div className="flex-1 overflow-y-auto">
+                {messages.map((msg, idx) => (
+                  <div
+                    key={idx}
+                    className={
+                      msg.sender === "ai"
+                        ? "text-left text-indigo-600"
+                        : "text-right text-gray-800"
+                    }
+                  >
+                    {msg.content}
+                  </div>
+                ))}
+              </div>
             </motion.div>
           )}
           {/* Centered animated bubble */}
