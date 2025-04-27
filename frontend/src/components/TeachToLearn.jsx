@@ -8,6 +8,7 @@ const TeachToLearn = ({ userId }) => {
   const [isComplete, setIsComplete] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isPendingUserResponse, setIsPendingUserResponse] = useState(false);
+  const [isAISpeaking, setIsAISpeaking] = useState(false);
   const [error, setError] = useState(null);
 
   const teachWsRef = useRef(null);
@@ -77,7 +78,7 @@ const TeachToLearn = ({ userId }) => {
     utterance.pitch = 1.0;
     utterance.volume = 1.0;
 
-    // Optional: Select voice (if available)
+    // Select voice
     const voices = speechSynthesisRef.current.getVoices();
     const preferredVoice = voices.find(
       (voice) =>
@@ -91,21 +92,14 @@ const TeachToLearn = ({ userId }) => {
     }
 
     // Start speaking
+    setIsAISpeaking(true);
     speechSynthesisRef.current.speak(utterance);
 
-    // Set state while speaking
+    // State management during/after speech
     setIsPendingUserResponse(false);
-
-    // Listen for when speaking is done
     utterance.onend = () => {
+      setIsAISpeaking(false);
       setIsPendingUserResponse(true);
-
-      // Start recording after a short delay
-      setTimeout(() => {
-        if (isConnected && !isComplete) {
-          startRecording();
-        }
-      }, 500);
     };
   };
 
@@ -202,6 +196,15 @@ const TeachToLearn = ({ userId }) => {
     }
   };
 
+  // Handle start/stop of recording
+  const handleSpeakToggle = () => {
+    if (isRecording) {
+      stopRecording();
+    } else {
+      startRecording();
+    }
+  };
+
   // Handle start/stop button click
   const handleTeachToLearnToggle = () => {
     if (isTeaching) {
@@ -240,8 +243,12 @@ const TeachToLearn = ({ userId }) => {
         ></span>
         <span>{isConnected ? "Connected" : "Disconnected"}</span>
 
-        {isPendingUserResponse && isConnected && (
-          <span className="ml-4 text-blue-500 animate-pulse">Listening...</span>
+        {isRecording && (
+          <span className="ml-4 text-red-500 animate-pulse">Recording...</span>
+        )}
+
+        {isAISpeaking && (
+          <span className="ml-4 text-purple-500">AI Speaking...</span>
         )}
       </div>
 
@@ -289,7 +296,7 @@ const TeachToLearn = ({ userId }) => {
         </div>
       )}
 
-      {/* Start/Stop button */}
+      {/* Start/Stop session button */}
       <button
         onClick={handleTeachToLearnToggle}
         disabled={isTeaching && !isConnected}
@@ -301,6 +308,20 @@ const TeachToLearn = ({ userId }) => {
       >
         {isTeaching ? "Stop Learning Session" : "Start Learning Session"}
       </button>
+
+      {/* Speak Now button (only shown when in a teaching session and not recording) */}
+      {isTeaching && isPendingUserResponse && !isAISpeaking && (
+        <button
+          onClick={handleSpeakToggle}
+          className={`ml-4 px-4 py-2 rounded-md font-medium text-white ${
+            isRecording
+              ? "bg-red-500 hover:bg-red-600"
+              : "bg-green-500 hover:bg-green-600"
+          }`}
+        >
+          {isRecording ? "Stop Speaking" : "Speak Now"}
+        </button>
+      )}
 
       {/* Completion message */}
       {isComplete && (

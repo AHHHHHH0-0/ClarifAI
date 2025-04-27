@@ -14,7 +14,6 @@ active_connections = {}
 # Import services
 from backend.src.services.gemini import GeminiService
 from backend.src.services.audio import create_transcription_service
-from backend.src.services.croq import create_tts_service
 
 # Import database functions
 from backend.src.database.db import (
@@ -28,7 +27,6 @@ from backend.src.database.db import (
 # Initialize services
 gemini_service = GeminiService()
 transcription_service = create_transcription_service()
-tts_service = create_tts_service()
 
 async def audio_to_text_websocket(websocket: WebSocket) -> None:
     """
