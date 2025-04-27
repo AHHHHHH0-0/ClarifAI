@@ -123,6 +123,14 @@ async def verify_firebase_token(request: Request):
         logger.error(f"Token verification failed: {e}")
         raise HTTPException(status_code=401, detail="Invalid token")
 
+def split_name(full_name: str):
+    if not full_name:
+        return None, None
+    parts = full_name.strip().split()
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], " ".join(parts[1:])
+
 @app.post("/api/users/from-firebase")
 async def create_user_from_firebase(
     user_data: UserData,
@@ -133,18 +141,23 @@ async def create_user_from_firebase(
         if user_data.email != decoded_token.get("email"):
             raise HTTPException(status_code=401, detail="Email mismatch")
         
+        first_name, last_name = split_name(user_data.name)
         # Create or update user in MongoDB
         user = await User.find_one({"email": user_data.email})
         if user:
             # Update existing user
             user.name = user_data.name
+            user.first_name = first_name
+            user.last_name = last_name
             await user.save()
         else:
             # Create new user
             user = User(
                 email=user_data.email,
                 name=user_data.name,
-                firebase_uid=decoded_token.get("sub")
+                firebase_uid=decoded_token.get("sub"),
+                first_name=first_name,
+                last_name=last_name
             )
             await user.save()
         
