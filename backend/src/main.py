@@ -36,6 +36,21 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add a custom middleware to add WebSocket CORS headers
+@app.middleware("http")
+async def add_websocket_cors_headers(request, call_next):
+    response = await call_next(request)
+    
+    # Add WebSocket specific headers
+    if "upgrade" in request.headers.get("connection", "").lower() and \
+       request.headers.get("upgrade", "").lower() == "websocket":
+        response.headers["Access-Control-Allow-Origin"] = "*"  # In production, restrict this
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    
+    return response
+
 # Add API routers
 app.include_router(api_router, prefix="/api")
 

@@ -243,47 +243,82 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
             await websocket.close()
 
 async def flag_concept_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
-    
+    logger.info("New connection to flag_concept_websocket")
     try:
+        await websocket.accept()
+        logger.info("WebSocket connection accepted")
+        
         while True:
             # Receive concept flagging request
+            logger.info("Waiting for concept flagging request...")
             data = await websocket.receive_text()
-            flag_data = json.loads(data)
+            logger.info(f"Received data: {data[:100]}...")  # Log first 100 chars
             
-            concept_name = flag_data.get("concept_name", "")
-            context = flag_data.get("context", "")
-            user_id = flag_data.get("user_id")
-            lecture_id = flag_data.get("lecture_id")
-            transcript_id = flag_data.get("transcript_id")
-            difficulty_level = flag_data.get("difficulty_level", 3)
+            try:
+                flag_data = json.loads(data)
+                logger.info(f"Parsed JSON data: {flag_data}")
+                
+                concept_name = flag_data.get("concept_name", "")
+                context = flag_data.get("context", "")
+                user_id = flag_data.get("user_id")
+                lecture_id = flag_data.get("lecture_id")
+                transcript_id = flag_data.get("transcript_id")
+                difficulty_level = flag_data.get("difficulty_level", 3)
+                
+                logger.info(f"Flagging concept: '{concept_name}' with context length: {len(context)}")
+                
+                # Get explanation for the flagged concept
+                logger.info("Calling gemini_service.explain_concept...")
+                result = await gemini_service.explain_concept(concept_name, context)
+                logger.info(f"Explanation result status: {result.get('status')}")
+                
+                # Save to database
+                if result and "explanation" in result:
+                    logger.info("Saving flagged concept to database...")
+                    try:
+                        await save_flagged_concept(
+                            concept_name=concept_name,
+                            explanation=result.get("explanation", ""),
+                            context=context,
+                            difficulty_level=difficulty_level,
+                            transcript_id=transcript_id,
+                            lecture_id=lecture_id,
+                            user_id=user_id
+                        )
+                        logger.info("Successfully saved flagged concept")
+                    except Exception as db_error:
+                        logger.error(f"Database error when saving flagged concept: {str(db_error)}")
+                else:
+                    logger.warning("No explanation returned from gemini_service")
+                
+                # Send the explanation back
+                logger.info("Sending explanation back to client...")
+                await websocket.send_json(result)
+                logger.info("Response sent successfully")
+            except json.JSONDecodeError as json_err:
+                logger.error(f"JSON parsing error: {str(json_err)}, Data: {data[:50]}...")
+                await websocket.send_json({
+                    "status": "error",
+                    "message": f"Invalid JSON: {str(json_err)}"
+                })
+            except Exception as processing_err:
+                logger.error(f"Error processing request: {str(processing_err)}")
+                await websocket.send_json({
+                    "status": "error",
+                    "message": f"Processing error: {str(processing_err)}"
+                })
             
-            # Get explanation for the flagged concept
-            result = await gemini_service.explain_concept(concept_name, context)
-            
-            # Save to database
-            if result and "explanation" in result:
-                await save_flagged_concept(
-                    concept_name=concept_name,
-                    explanation=result.get("explanation", ""),
-                    context=context,
-                    difficulty_level=difficulty_level,
-                    transcript_id=transcript_id,
-                    lecture_id=lecture_id,
-                    user_id=user_id
-                )
-            
-            # Send the explanation back
-            await websocket.send_json(result)
-            
-    except WebSocketDisconnect:
-        await websocket.close()
+    except WebSocketDisconnect as ws_disconnect:
+        logger.info(f"WebSocket disconnected: {str(ws_disconnect)}")
     except Exception as e:
-        await websocket.send_json({
-            "status": "error",
-            "message": str(e)
-        })
+        logger.error(f"Unexpected error in flag_concept_websocket: {str(e)}", exc_info=True)
+        if websocket.client_state == WebSocketState.CONNECTED:
+            await websocket.send_json({
+                "status": "error",
+                "message": str(e)
+            })
     finally:
+        logger.info("Closing flag_concept_websocket connection")
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
 
