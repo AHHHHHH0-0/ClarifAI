@@ -15,11 +15,11 @@ logger = logging.getLogger(__name__)
 active_connections = {}
 
 # Import services
-from backend.src.services.gemini import GeminiService
-from backend.src.services.audio import create_transcription_service
+from services.gemini import GeminiService
+from services.audio import create_transcription_service
 
 # Import database functions
-from backend.src.database.db import (
+from database.db import (
     save_lecture,
     get_user_lectures,
     save_concept,
@@ -31,8 +31,17 @@ from backend.src.database.db import (
 gemini_service = GeminiService()
 transcription_service = create_transcription_service()
 
-async def process_audio_websocket(websocket: WebSocket) -> None:
+# Helper function to handle WebSocket CORS
+async def handle_websocket_cors(websocket: WebSocket) -> None:
+    # Accept the connection with CORS headers
     await websocket.accept()
+    
+    # Log connection details
+    client = websocket.client
+    logger.info(f"WebSocket connection accepted from {client}")
+
+async def process_audio_websocket(websocket: WebSocket) -> None:
+    await handle_websocket_cors(websocket)
     
     previous_transcript = ""
     user_id = None
@@ -102,7 +111,7 @@ async def process_audio_websocket(websocket: WebSocket) -> None:
             await websocket.close()
 
 async def audio_to_text_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
+    await handle_websocket_cors(websocket)
     DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
     uri = "wss://api.deepgram.com/v1/listen"
     headers = {
@@ -147,7 +156,7 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
             await websocket.close()
 
 async def flag_concept_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
+    await handle_websocket_cors(websocket)
     
     try:
         while True:
@@ -194,7 +203,7 @@ async def flag_concept_websocket(websocket: WebSocket) -> None:
             await websocket.close()
 
 async def flagged_history_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
+    await handle_websocket_cors(websocket)
     
     try:
         # Receive request data
@@ -228,7 +237,7 @@ async def flagged_history_websocket(websocket: WebSocket) -> None:
             await websocket.close()
 
 async def evaluate_understanding_websocket(websocket: WebSocket) -> None:
-    await websocket.accept()
+    await handle_websocket_cors(websocket)
     
     try:
         while True:
@@ -258,8 +267,9 @@ async def evaluate_understanding_websocket(websocket: WebSocket) -> None:
 
 async def lectures_websocket(websocket: WebSocket) -> None:
     """WebSocket endpoint to retrieve lectures for a user"""
-    await websocket.accept()
+    await handle_websocket_cors(websocket)
     try:
+        # Allow connection without authentication for testing purposes
         data = await websocket.receive_text()
         params = json.loads(data)
         user_id = params.get("user_id")

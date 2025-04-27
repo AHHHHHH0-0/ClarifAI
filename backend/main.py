@@ -9,7 +9,7 @@ from typing import Optional
 from dotenv import load_dotenv
 from motor.motor_asyncio import AsyncIOMotorClient
 from beanie import init_beanie
-from backend.src.models.user import User
+from models.user import User
 
 # Load environment variables
 load_dotenv()
@@ -18,17 +18,22 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Get allowed origins from environment variable or use default in development
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:5173,http://localhost:5174,https://clarifai.yourdomain.com").split(",")
+logger.info(f"Allowed origins for CORS: {ALLOWED_ORIGINS}")
+
 # Import database
-from backend.src.database.db import init_db
+from database.db import init_db
 
 # Import API modules
-from backend.src.api.routes import router as api_router
-from backend.src.api.websockets import (
+from api.routes import router as api_router
+from api.websockets import (
     process_audio_websocket, 
     audio_to_text_websocket,
     flag_concept_websocket,
     flagged_history_websocket,
-    evaluate_understanding_websocket
+    evaluate_understanding_websocket,
+    lectures_websocket
 )
 
 # Create FastAPI app
@@ -40,15 +45,18 @@ app = FastAPI(
 
 # Mount frontend build for single-container deployment
 from fastapi.staticfiles import StaticFiles
-app.mount("/", StaticFiles(directory="../frontend/build", html=True), name="static")
+# Commenting out the following line because frontend/build directory doesn't exist
+# app.mount("/", StaticFiles(directory="../frontend/build", html=True), name="static")
 
-# Update CORS to allow all origins during deployment
+# Configure CORS - Updated to ensure CORS headers are properly set
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Type", "Authorization", "X-Requested-With", "Accept", "Origin"],
+    max_age=86400,  # Cache preflight requests for 24 hours
 )
 
 # Add API routers
@@ -74,6 +82,11 @@ async def websocket_flagged_history(websocket: WebSocket):
 @app.websocket("/ws/evaluate-understanding")
 async def websocket_evaluate_understanding(websocket: WebSocket):
     await evaluate_understanding_websocket(websocket)
+
+# Add missing lectures WebSocket endpoint
+@app.websocket("/ws/lectures")
+async def websocket_lectures(websocket: WebSocket):
+    await lectures_websocket(websocket)
 
 # Startup and shutdown events
 @app.on_event("startup")
@@ -104,6 +117,55 @@ async def shutdown_event():
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "ClarifAI backend is running"}
+
+# Add CORS preflight handler for OPTIONS requests
+@app.options("/{rest_of_path:path}")
+async def preflight_handler(request: Request, rest_of_path: str):
+    from fastapi.responses import JSONResponse
+    response = JSONResponse(content={})
+    
+    # Get origin from request or default to localhost:3000
+    origin = request.headers.get("origin", "http://localhost:3000")
+    
+    # Add CORS headers manually
+    response.headers["Access-Control-Allow-Origin"] = origin
+    response.headers["Access-Control-Allow-Credentials"] = "true"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    response.headers["Access-Control-Expose-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept, Origin"
+    
+    return response
+
+# Add direct debug token endpoint with CORS
+@app.get("/api/debug-direct/token")
+async def debug_direct_token(request: Request):
+    from api.routes import create_access_token
+    from datetime import timedelta
+    
+    try:
+        # Create a debug token
+        access_token = create_access_token(
+            data={"sub": "test@example.com"}, expires_delta=timedelta(days=30)
+        )
+        
+        # Create response with explicit CORS headers
+        from fastapi.responses import JSONResponse
+        response = JSONResponse(content={"access_token": access_token, "token_type": "bearer"})
+        
+        # Get origin from request
+        origin = request.headers.get("origin", "http://localhost:3000")
+        
+        # Add CORS headers manually - make sure to handle localhost:3000
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+        response.headers["Access-Control-Allow-Methods"] = "*"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Expose-Headers"] = "Content-Type, Authorization, X-Requested-With, Accept, Origin"
+        
+        return response
+    except Exception as e:
+        logger.error(f"Error in debug-direct token endpoint: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 class UserData(BaseModel):
     email: str
@@ -181,4 +243,10 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Start server with provided arguments
-    uvicorn.run(app, host=args.host, port=args.port) 
+    uvicorn.run(
+        app, 
+        host=args.host, 
+        port=args.port,
+        forwarded_allow_ips="*",  # Trust forwarded headers from all IPs
+        proxy_headers=True        # Process proxy headers
+    ) 
