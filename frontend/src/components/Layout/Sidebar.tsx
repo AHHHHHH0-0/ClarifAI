@@ -79,53 +79,8 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
         </button>
       </div>
 
-      {/* Navigation Links */}
-      <nav className="flex-1 px-4 py-4">
-        <ul className="space-y-2">
-          <li>
-            <Link 
-              to="/dashboard" 
-              className={`flex items-center p-2 pl-3 rounded-lg transition-colors duration-200 ${isActive('/dashboard') ? 'text-white bg-indigo-600 hover:text-white' : 'text-white hover:bg-indigo-500 hover:text-white'}`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
-              </svg>
-              {isExpanded && (
-                <motion.span 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="ml-3"
-                >
-                    Student Mode                </motion.span>
-              )}
-            </Link>
-          </li>
-          <li>
-            <Link 
-              to="/teach-to-learn" 
-              className={`flex items-center p-2 pl-3 rounded-lg transition-colors duration-200 ${isActive('/teach-to-learn') ? 'text-white bg-indigo-600 hover:text-white' : 'text-white hover:bg-indigo-500 hover:text-white'}`}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              </svg>
-              {isExpanded && (
-                <motion.span 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="ml-3"
-                >
-                  Teach Mode
-                </motion.span>
-              )}
-            </Link>
-          </li>
-        </ul>
-      </nav>
-
-      {/* Conversations Section */}
-      <div className="px-4 py-4 border-t border-primary-hover">
+      {/* Conversations Section - Moved up to replace Mode Selector */}
+      <div className="flex-1 px-4 py-4">
         <div className="flex items-center justify-between mb-4 px-4">
           {isExpanded && (
             <motion.span 
