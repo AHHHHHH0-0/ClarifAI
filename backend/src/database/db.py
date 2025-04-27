@@ -6,7 +6,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 from passlib.context import CryptContext
 
-from backend.src.database.models import Transcript, FlaggedConcept, OrganizedNotes, OtherConcept, User
+from backend.src.database.models import Lecture, Concept, FlaggedConcept, User
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -28,10 +28,9 @@ async def init_db():
             database=client[db_name],
             document_models=[
                 User,
-                Transcript,
-                FlaggedConcept,
-                OrganizedNotes,
-                OtherConcept
+                Lecture,
+                Concept,
+                FlaggedConcept
             ]
         )
         
@@ -197,4 +196,36 @@ async def save_other_concept(
 async def get_other_concepts(transcript_id: Optional[str] = None) -> List[OtherConcept]:
     """Get unflagged concepts, optionally filtered by transcript"""
     query = {"transcript_id": transcript_id} if transcript_id else {}
-    return await OtherConcept.find(query).to_list() 
+    return await OtherConcept.find(query).to_list()
+
+async def save_lecture(user_id: str, title: str, organized_notes: str) -> str:
+    """Save a lecture and return its ID"""
+    lecture = Lecture(
+        user_id=user_id,
+        title=title,
+        organized_notes=organized_notes
+    )
+    await lecture.insert()
+    return str(lecture.id)
+
+async def get_user_lectures(user_id: str) -> List[Lecture]:
+    """Get all lectures for a specific user"""
+    return await Lecture.find({"user_id": user_id}).to_list()
+
+async def save_concept(user_id: str, lecture_id: str, concept_name: str, text_snippet: str, difficulty_level: int, start_position: int, end_position: int) -> str:
+    """Save a concept and return its ID"""
+    concept = Concept(
+        user_id=user_id,
+        lecture_id=lecture_id,
+        concept_name=concept_name,
+        text_snippet=text_snippet,
+        difficulty_level=difficulty_level,
+        start_position=start_position,
+        end_position=end_position
+    )
+    await concept.insert()
+    return str(concept.id)
+
+async def get_concepts_by_lecture(lecture_id: str) -> List[Concept]:
+    """Get all concepts for a specific lecture"""
+    return await Concept.find({"lecture_id": lecture_id}).to_list() 

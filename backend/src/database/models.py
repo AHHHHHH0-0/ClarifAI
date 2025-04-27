@@ -8,7 +8,8 @@ class User(Document):
     """Store user profile and authentication data"""
     email: EmailStr
     hashed_password: str
-    full_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     disabled: bool = False
     created_at: datetime = Field(default_factory=datetime.utcnow)
     last_login: Optional[datetime] = None
@@ -19,55 +20,38 @@ class User(Document):
             "email",  # Index for faster queries by email
         ]
 
-# Basic models structure - this will be populated with models from any existing implementation
-# or left as a template for future models
-
-class Transcript(Document):
-    """Store transcription data"""
-    user_id: Optional[str] = None
-    lecture_id: Optional[str] = None
-    text: str = ""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
-
-    class Settings:
-        name = "transcripts"
-
-class OrganizedNotes(Document):
-    """Store organized lecture notes"""
-    user_id: Optional[str] = None
-    lecture_id: Optional[str] = None
-    title: str = "Untitled Lecture"
-    content: str = ""  # The processed and organized content of the lecture
-    raw_transcript: str = ""  # Original transcript text
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+# New Lecture model: each recording session stored here
+class Lecture(Document):
+    user_id: str
+    title: str
+    organized_notes: str
     
     class Settings:
-        name = "organized_notes"
+        name = "lectures"
 
-class OtherConcept(Document):
-    """Store concepts detected during transcription but not flagged"""
-    transcript_id: Optional[str] = None
-    lecture_id: Optional[str] = None
+# Concept model: auto-extracted concepts per lecture
+class Concept(Document):
+    user_id: str
+    lecture_id: str
     concept_name: str
     text_snippet: str
-    start_position: int = 0
-    end_position: int = 0
-    difficulty_level: int = 1
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    difficulty_level: int
+    start_position: int
+    end_position: int
     
     class Settings:
-        name = "other_concepts"
+        name = "concepts"
 
 class FlaggedConcept(Document):
-    """Store flagged concepts with explanations"""
+    """Store user-flagged concepts with explanations"""
+    user_id: str
+    lecture_id: str
     concept_name: str
     explanation: str
-    context: str = ""
-    difficulty_level: int = 1
-    transcript_id: Optional[str] = None
-    lecture_id: Optional[str] = None
-    user_id: Optional[str] = None
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    text_snippet: str
+    difficulty_level: int
+    start_position: int
+    end_position: int
     
     class Settings:
         name = "flagged_concepts" 

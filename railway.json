@@ -1,0 +1,15 @@
+{
+  "build": {
+    "builder": "nixpacks",
+    "buildCommand": "yarn install && yarn build"
+  },
+  "deploy": {
+    "startCommand": "yarn start",
+    "healthcheckPath": "/",
+    "restartPolicyType": "ON_FAILURE",
+    "restartPolicyMaxRetries": 10
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
