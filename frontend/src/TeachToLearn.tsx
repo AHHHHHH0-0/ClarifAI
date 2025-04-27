@@ -34,7 +34,7 @@ const TeachToLearn: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-background-light">
       {/* Sidebar */}
       <Sidebar 
         conversations={mockConversations}
@@ -45,15 +45,15 @@ const TeachToLearn: React.FC = () => {
       {/* Main content */}
       <main className="flex-1 flex flex-col relative">
         {/* Mode Switch */}
-        <div className="flex gap-0 mt-6 ml-8">
+        <div className="flex justify-end gap-0 mt-6 mr-8">
           <button
-            className={`px-6 py-2 border border-gray-300 rounded-l-lg font-semibold text-slate-700 bg-white transition ${mode === 'student' ? 'bg-blue-500 text-white border-blue-500' : 'hover:bg-gray-100'}`}
+            className={`px-6 py-2 border border-border rounded-l-lg font-semibold transition-colors duration-200 ${mode === 'student' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-text hover:bg-gray-50'}`}
             onClick={() => handleModeChange('student')}
           >
             Student
           </button>
           <button
-            className={`px-6 py-2 border border-gray-300 rounded-r-lg font-semibold text-slate-700 bg-white transition ${mode === 'teacher' ? 'bg-blue-500 text-white border-blue-500' : 'hover:bg-gray-100'}`}
+            className={`px-6 py-2 border border-border rounded-r-lg font-semibold transition-colors duration-200 ${mode === 'teacher' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-text hover:bg-gray-50'}`}
             onClick={() => handleModeChange('teacher')}
           >
             Teacher
@@ -81,15 +81,15 @@ const TeachToLearn: React.FC = () => {
               <motion.div
                 className="w-40 h-40 md:w-56 md:h-56 rounded-full shadow-lg"
                 style={{
-                  background: "linear-gradient(135deg, #9EDDFF, #023E7D)"
+                  background: "linear-gradient(135deg, #818CF8, #4F46E5)"
                 }}
                 animate={{
                   background: [
-                    "linear-gradient(135deg, #9EDDFF, #023E7D)",
-                    "linear-gradient(225deg, #9EDDFF, #023E7D)",
-                    "linear-gradient(315deg, #9EDDFF, #023E7D)",
-                    "linear-gradient(45deg, #9EDDFF, #023E7D)",
-                    "linear-gradient(135deg, #9EDDFF, #023E7D)"
+                    "linear-gradient(135deg, #818CF8, #4F46E5)",
+                    "linear-gradient(225deg, #818CF8, #4F46E5)",
+                    "linear-gradient(315deg, #818CF8, #4F46E5)",
+                    "linear-gradient(45deg, #818CF8, #4F46E5)",
+                    "linear-gradient(135deg, #818CF8, #4F46E5)"
                   ]
                 }}
                 transition={{
@@ -107,12 +107,12 @@ const TeachToLearn: React.FC = () => {
           <div className="flex justify-center items-center gap-6">
             {/* Microphone button */}
             <button 
-              className="w-12 h-12 rounded-full bg-gray-200 flex items-center justify-center transition hover:bg-gray-300"
+              className="w-12 h-12 rounded-full bg-background hover:bg-border flex items-center justify-center transition-colors duration-200 shadow-md"
               onClick={toggleSpeaking}
             >
               <svg 
                 xmlns="http://www.w3.org/2000/svg" 
-                className="h-6 w-6 text-gray-600" 
+                className="h-6 w-6 text-text-muted" 
                 fill="none" 
                 viewBox="0 0 24 24" 
                 stroke="currentColor"
