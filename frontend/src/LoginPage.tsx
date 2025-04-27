@@ -36,9 +36,9 @@ const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full bg-white p-8 shadow-lg rounded-lg">
-        <h2 className="text-2xl font-bold mb-6 text-center text-slate-700">Login to ClarifAI</h2>
+    <div className="min-h-screen flex items-center justify-center bg-background px-4">
+      <div className="max-w-md w-full bg-primary-light/5 p-8 shadow-lg rounded-2xl border border-border">
+        <h2 className="text-2xl font-bold mb-6 text-center text-text">Login to ClarifAI</h2>
         <div className="mb-6">
           <GoogleLogin
             onSuccess={credentialResponse => {
@@ -54,18 +54,18 @@ const LoginPage: React.FC = () => {
           />
         </div>
         <div className="flex items-center my-4">
-          <div className="flex-grow h-px bg-gray-200" />
-          <span className="mx-3 text-gray-400 text-sm">or</span>
-          <div className="flex-grow h-px bg-gray-200" />
+          <div className="flex-grow h-px border-t border-border" />
+          <span className="mx-3 text-text-muted text-sm">or</span>
+          <div className="flex-grow h-px border-t border-border" />
         </div>
-        {error && <div className="mb-4 text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2 text-sm">{error}</div>}
+        {error && <div className="mb-4 text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2 text-sm">{error}</div>}
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
-            <label htmlFor="email" className="block text-slate-700 mb-2 font-medium">Your Email <span className="text-red-500">*</span></label>
+            <label htmlFor="email" className="block text-text mb-2 font-medium">Your Email <span className="text-red-500">*</span></label>
             <input
               id="email"
               type="email"
-              className="w-full px-3 py-2 border border-gray-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-700 bg-gray-50 placeholder-gray-400"
+              className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-text bg-background placeholder-text-muted"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
@@ -73,11 +73,11 @@ const LoginPage: React.FC = () => {
             />
           </div>
           <div className="mb-4">
-            <label htmlFor="password" className="block text-slate-700 mb-2 font-medium">Password <span className="text-red-500">*</span></label>
+            <label htmlFor="password" className="block text-text mb-2 font-medium">Password <span className="text-red-500">*</span></label>
             <input
               id="password"
               type="password"
-              className="w-full px-3 py-2 border border-gray-200 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-slate-700 bg-gray-50 placeholder-gray-400"
+              className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary text-text bg-background placeholder-text-muted"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -90,9 +90,9 @@ const LoginPage: React.FC = () => {
               type="checkbox"
               checked={rememberMe}
               onChange={() => setRememberMe(!rememberMe)}
-              className="h-4 w-4 text-blue-500 border-gray-300 rounded focus:ring-blue-500"
+              className="h-4 w-4 text-primary border-border rounded focus:ring-primary"
             />
-            <label htmlFor="rememberMe" className="ml-2 block text-slate-700 text-sm">Remember me</label>
+            <label htmlFor="rememberMe" className="ml-2 block text-text text-sm">Remember me</label>
           </div>
           <div className="flex items-center mb-6">
             <input
@@ -100,30 +100,30 @@ const LoginPage: React.FC = () => {
               type="checkbox"
               checked={agree}
               onChange={() => setAgree(!agree)}
-              className="h-4 w-4 text-blue-500 border-gray-300 rounded focus:ring-blue-500"
+              className="h-4 w-4 text-primary border-border rounded focus:ring-primary"
               required
             />
-            <label htmlFor="agree" className="ml-2 block text-slate-700 text-sm">
-              I agree to storage of my data according to <a href="#" className="text-blue-500 underline">Privacy Policy</a>.
+            <label htmlFor="agree" className="ml-2 block text-text text-sm">
+              I agree to storage of my data according to <a href="#" className="text-primary hover:underline">Privacy Policy</a>.
             </label>
           </div>
           <div className="flex gap-2 mb-4">
             <button
               type="submit"
-              className="flex-1 bg-emerald-500 hover:bg-emerald-600 text-white py-2 rounded font-semibold transition"
+              className="flex-1 bg-primary hover:bg-primary-hover text-white py-3 px-6 rounded-lg font-semibold transition-colors duration-200"
             >
               Login <span className="ml-1">→</span>
             </button>
             <button
               type="button"
-              className="flex-1 bg-blue-500 hover:bg-blue-600 text-white py-2 rounded font-semibold transition"
+              className="flex-1 bg-primary-light hover:bg-primary-light/80 text-white py-3 px-6 rounded-lg font-semibold transition-colors duration-200"
               onClick={() => alert('Create Account not implemented.')}
             >
               Create Account
             </button>
           </div>
           <div className="text-center mt-2">
-            <a href="#" className="text-blue-500 hover:underline text-sm">Forgot your password or cannot log in?</a>
+            <a href="#" className="text-primary hover:underline text-sm">Forgot your password or cannot log in?</a>
           </div>
         </form>
       </div>

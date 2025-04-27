@@ -46,7 +46,7 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
             <img 
               src="/logo.png" 
               alt="ClarifAI Logo" 
-              className="w-6 h-6 mr-2"
+              className="w-12 h-12 mr-2"
             />
             <h1 className="font-heading text-white font-bold text-lg">ClarifAI</h1>
           </motion.div>
@@ -153,7 +153,7 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
           {conversations.map((conv) => (
             <li key={conv.id}>
               <button
-                className={`w-full flex items-center p-2 pl-3 rounded-lg transition-colors duration-200 ${selectedConv === conv.id ? 'bg-primary-hover text-white' : 'text-white hover:bg-primary-hover'}`}
+                className={`w-full flex items-center p-3 pl-3 rounded-lg transition-colors duration-200 ${selectedConv === conv.id ? 'bg-primary-hover text-white' : 'text-white hover:bg-primary-hover'} ${!isExpanded ? 'justify-center': ''}`}
                 onClick={() => onConversationSelect(conv.id)}
               >
                 <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-white text-primary text-xs font-medium">
