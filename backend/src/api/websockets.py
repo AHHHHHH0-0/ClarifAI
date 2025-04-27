@@ -21,6 +21,7 @@ from backend.src.services.audio import create_transcription_service
 # Import database functions
 from backend.src.database.db import (
     save_lecture,
+    get_user_lectures,
     save_concept,
     save_flagged_concept,
     get_flagged_concepts
@@ -251,6 +252,28 @@ async def evaluate_understanding_websocket(websocket: WebSocket) -> None:
             "status": "error",
             "message": str(e)
         })
+    finally:
+        if websocket.client_state == WebSocketState.CONNECTED:
+            await websocket.close()
+
+async def lectures_websocket(websocket: WebSocket) -> None:
+    """WebSocket endpoint to retrieve lectures for a user"""
+    await websocket.accept()
+    try:
+        data = await websocket.receive_text()
+        params = json.loads(data)
+        user_id = params.get("user_id")
+        lectures = await get_user_lectures(user_id)
+        # Send lectures list to client
+        await websocket.send_json({
+            "status": "success",
+            "lectures": [lecture.dict() for lecture in lectures]
+        })
+    except WebSocketDisconnect:
+        await websocket.close()
+    except Exception as e:
+        logger.error(f"Error in lectures_ws: {e}")
+        await websocket.send_json({"status": "error", "message": str(e)})
     finally:
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()

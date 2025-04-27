@@ -4,19 +4,21 @@ import { motion } from "framer-motion";
 import Sidebar from "./components/Layout/Sidebar";
 import { auth } from "./firebase";
 
-// Mock data from DashboardPage for consistency
-const mockConversations = [
-  { id: "1", name: "Biology Lecture" },
-  { id: "2", name: "Math Q&A" },
-  { id: "3", name: "History Review" },
-];
+// State for lectures fetched from backend
+interface LectureItem {
+  id: string;
+  name: string;
+}
+const WS_LECTURES_URL =
+  (process.env.REACT_APP_WS_URL || "ws://localhost:8000") + "/ws/lectures";
 
 /**
  * TeachToLearn page - Teacher mode interface with speech visualization
  */
 const TeachToLearn: React.FC = () => {
   const [mode, setMode] = useState<"student" | "teacher">("teacher");
-  const [selectedConv, setSelectedConv] = useState("1");
+  const [lectures, setLectures] = useState<LectureItem[]>([]);
+  const [selectedConv, setSelectedConv] = useState("");
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [firstName, setFirstName] = useState("Student");
 
@@ -28,6 +30,29 @@ const TeachToLearn: React.FC = () => {
     if (user && user.displayName) {
       setFirstName(user.displayName.split(" ")[0]);
     }
+  }, []);
+
+  // Fetch lectures on mount
+  useEffect(() => {
+    const ws = new WebSocket(WS_LECTURES_URL);
+    ws.onopen = () => {
+      const user = auth.currentUser;
+      if (user) ws.send(JSON.stringify({ user_id: user.uid }));
+    };
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.status === "success" && data.lectures) {
+          const list = data.lectures.map((lec: any) => ({
+            id: lec.id,
+            name: lec.title,
+          }));
+          setLectures(list);
+          if (list.length) setSelectedConv(list[0].id);
+        }
+      } catch {}
+    };
+    return () => ws.close();
   }, []);
 
   // Handle mode switch
@@ -47,7 +72,7 @@ const TeachToLearn: React.FC = () => {
     <div className="flex h-screen bg-background-light">
       {/* Sidebar */}
       <Sidebar
-        conversations={mockConversations}
+        conversations={lectures}
         selectedConv={selectedConv}
         onConversationSelect={setSelectedConv}
       />
