@@ -13,11 +13,11 @@ from backend.src.database.db import init_db
 # Import API modules
 from backend.src.api.routes import router as api_router
 from backend.src.api.websockets import (
-    process_audio_websocket, 
     audio_to_text_websocket,
     flag_concept_websocket,
     flagged_history_websocket,
-    evaluate_understanding_websocket
+    evaluate_understanding_websocket,
+    teach_to_learn_websocket
 )
 
 # Create FastAPI app
@@ -40,10 +40,6 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api")
 
 # WebSocket endpoints
-@app.websocket("/ws/process-audio")
-async def websocket_process_audio(websocket: WebSocket):
-    await process_audio_websocket(websocket)
-
 @app.websocket("/ws/audio-to-text")
 async def websocket_audio_to_text(websocket: WebSocket):
     await audio_to_text_websocket(websocket)
@@ -59,6 +55,10 @@ async def websocket_flagged_history(websocket: WebSocket):
 @app.websocket("/ws/evaluate-understanding")
 async def websocket_evaluate_understanding(websocket: WebSocket):
     await evaluate_understanding_websocket(websocket)
+
+@app.websocket("/ws/teach-to-learn")
+async def websocket_teach_to_learn(websocket: WebSocket):
+    await teach_to_learn_websocket(websocket)
 
 # Startup and shutdown events
 @app.on_event("startup")
