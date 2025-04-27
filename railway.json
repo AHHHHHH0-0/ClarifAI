@@ -1,16 +1,7 @@
 {
   "$schema": "https://railway.app/railway.schema.json",
   "build": {
-    "builder": "NIXPACKS",
-    "nixpacksPlan": {
-      "providers": ["node"],
-      "phases": {
-        "setup": { "nixPkgs": ["nodejs_20_x"] },
-        "install": { "cmds": ["yarn install --frozen-lockfile"] },
-        "build": { "cmds": ["yarn build"] }
-      },
-      "start": { "cmd": "yarn start" }
-    }
+    "builder": "HEROKU"
   },
   "deploy": {
     "startCommand": "yarn start",
