@@ -1,0 +1,17 @@
+[phases.setup]
+# Use Node.js 20 from NixPkgs
+nixPkgs = ["nodejs_20"]
+
+[phases.install]
+cmds = [
+  "yarn install --frozen-lockfile"
+]
+
+[phases.build]
+cmds = [
+  "yarn build"
+]
+
+[start]
+# Launch both frontend and backend in parallel
+cmd = "yarn start" 
