@@ -21,12 +21,20 @@ from backend.src.database.db import (
     save_flagged_concept, 
     save_organized_notes,
     save_other_concept,
-    get_flagged_concepts
+    get_flagged_concepts,
+    get_organized_notes
 )
 
 # Initialize services
 gemini_service = GeminiService()
 transcription_service = create_transcription_service()
+
+# Helper to centralize evaluation logic
+async def evaluate_user_understanding(lecture_content: str, user_explanation: str) -> Dict[str, Any]:
+    """
+    Helper to evaluate user's understanding using GeminiService.
+    """
+    return await gemini_service.evaluate_understanding(lecture_content, user_explanation)
 
 async def audio_to_text_websocket(websocket: WebSocket) -> None:
     """
@@ -309,26 +317,32 @@ async def evaluate_understanding_websocket(websocket: WebSocket) -> None:
     
     try:
         while True:
-            # Receive evaluation request
             data = await websocket.receive_text()
             eval_data = json.loads(data)
-            
-            lecture_transcript = eval_data.get("lecture_transcript", "")
+            notes_id = eval_data.get("notes_id")
+            if not notes_id:
+                await websocket.send_json({"status":"error","message":"notes_id is required"})
+                continue
+            notes = await get_organized_notes(notes_id)
+            if not notes:
+                await websocket.send_json({"status":"error","message":f"No notes found for id {notes_id}"})
+                continue
+            lecture_content = notes.content
             user_explanation = eval_data.get("user_explanation", "")
-            
-            # Evaluate understanding
-            result = await gemini_service.evaluate_understanding(lecture_transcript, user_explanation)
-            
-            # Send the evaluation back
-            await websocket.send_json(result)
-            
+            # Delegate to helper
+            result = await evaluate_user_understanding(lecture_content, user_explanation)
+            await websocket.send_json({
+                "status": "success",
+                "evaluation": result.get("evaluation")
+            })
     except WebSocketDisconnect:
         await websocket.close()
     except Exception as e:
-        await websocket.send_json({
-            "status": "error",
-            "message": str(e)
-        })
+        if websocket.client_state == WebSocketState.CONNECTED:
+            await websocket.send_json({
+                "status": "error",
+                "message": str(e)
+            })
     finally:
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
@@ -355,11 +369,19 @@ async def teach_to_learn_websocket(websocket: WebSocket) -> None:
         # First, get initialization parameters
         init_data = await websocket.receive_text()
         params = json.loads(init_data)
-        
-        # Extract user info and topic
+        # Extract user info, topic, and notes
         user_id = params.get("user_id")
         current_topic = params.get("topic", "")
-        
+        notes_id = params.get("notes_id")
+        if not notes_id:
+            await websocket.send_json({"status":"error","message":"notes_id is required"})
+            return
+        notes = await get_organized_notes(notes_id)
+        if not notes:
+            await websocket.send_json({"status":"error","message":f"No notes found for id {notes_id}"})
+            return
+        lecture_content = notes.content
+
         if not current_topic:
             await websocket.send_json({
                 "status": "error",
@@ -402,46 +424,40 @@ async def teach_to_learn_websocket(websocket: WebSocket) -> None:
                 })
                 break
                 
-            # If we received a transcript (from audio processing done in separate connection)
             if input_data.get("transcript"):
                 user_response = input_data.get("transcript")
                 is_final = input_data.get("is_final", True)
-                
                 # Only process final transcripts
                 if is_final:
                     # Add to conversation history
                     conversation_history.append({"user": user_response})
-                    
-                    # Process with Gemini service
-                    teaching_result = await gemini_service.teach_to_learn(
-                        current_topic,
-                        user_response,
-                        conversation_history
-                    )
-                    
-                    # Update understanding score
-                    understanding_score = teaching_result.get("understanding_score", understanding_score)
-                    
-                    # Prepare AI response
-                    ai_response = teaching_result.get("response", "")
-                    follow_up = teaching_result.get("follow_up_question", "")
-                    full_response = f"{ai_response} {follow_up}"
-                    
+                    # Delegate to the evaluation helper
+                    result = await evaluate_user_understanding(lecture_content, user_response)
+                    evaluation = result.get("evaluation", {})
+                    level = evaluation.get("understanding_level", 3)
+                    # Convert 1-5 scale to percentage
+                    understanding_score = level * 20
+                    follow_up_questions = evaluation.get("follow_up_questions", [])
+                    improvement_suggestions = evaluation.get("improvement_suggestions", [])
+                    # Choose next question
+                    if follow_up_questions:
+                        next_text = follow_up_questions[0]
+                    elif improvement_suggestions:
+                        next_text = improvement_suggestions[0]
+                    else:
+                        next_text = "Can you tell me more about this topic?"
+                    is_complete = level == 5
                     # Add to conversation history
-                    conversation_history.append({"ai": full_response})
-                    
-                    # Check if learning is complete
-                    is_complete = teaching_result.get("is_complete", False)
-                    
-                    # Send response as text for client-side TTS
+                    conversation_history.append({"ai": next_text})
+                    # Send response for client-side TTS
                     await websocket.send_json({
                         "status": "response",
                         "understanding_score": understanding_score,
                         "is_complete": is_complete,
-                        "text": full_response,
+                        "text": next_text,
                         "use_client_tts": True
                     })
-                
+         
     except WebSocketDisconnect:
         logger.info(f"WebSocket disconnected for teach-to-learn session for user {user_id}")
     except Exception as e:
