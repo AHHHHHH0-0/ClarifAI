@@ -1,7 +1,18 @@
-from fastapi import FastAPI, Depends, WebSocket
+from fastapi import FastAPI, Depends, WebSocket, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 import logging
 import os
+from google.oauth2 import id_token
+from google.auth.transport import requests
+from pydantic import BaseModel
+from typing import Optional
+from dotenv import load_dotenv
+from motor.motor_asyncio import AsyncIOMotorClient
+from beanie import init_beanie
+from backend.src.models.user import User
+
+# Load environment variables
+load_dotenv()
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -30,7 +41,7 @@ app = FastAPI(
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to specific origins
+    allow_origins=["http://localhost:3000"],  # Update with your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -71,6 +82,15 @@ async def startup_event():
     else:
         logger.error("Failed to initialize database")
 
+    # Initialize MongoDB connection
+    try:
+        client = AsyncIOMotorClient(os.getenv("MONGODB_URL"))
+        await init_beanie(database=client[os.getenv("MONGODB_DB")], document_models=[User])
+        logger.info("Connected to MongoDB")
+    except Exception as e:
+        logger.error(f"Error connecting to MongoDB: {e}")
+        raise
+
 @app.on_event("shutdown")
 async def shutdown_event():
     # Perform cleanup
@@ -80,6 +100,58 @@ async def shutdown_event():
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "ClarifAI backend is running"}
+
+class UserData(BaseModel):
+    email: str
+    name: Optional[str] = None
+
+async def verify_firebase_token(request: Request):
+    auth_header = request.headers.get("Authorization")
+    if not auth_header or not auth_header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="No token provided")
+    
+    token = auth_header.split("Bearer ")[1]
+    try:
+        # Use verify_firebase_token instead of verify_oauth2_token
+        decoded_token = id_token.verify_firebase_token(
+            token, 
+            requests.Request(), 
+            audience="clarifai-5f201"  # Your Firebase project ID
+        )
+        return decoded_token
+    except Exception as e:
+        logger.error(f"Token verification failed: {e}")
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+@app.post("/api/users/from-firebase")
+async def create_user_from_firebase(
+    user_data: UserData,
+    decoded_token: dict = Depends(verify_firebase_token)
+):
+    try:
+        # Verify the email matches the token
+        if user_data.email != decoded_token.get("email"):
+            raise HTTPException(status_code=401, detail="Email mismatch")
+        
+        # Create or update user in MongoDB
+        user = await User.find_one({"email": user_data.email})
+        if user:
+            # Update existing user
+            user.name = user_data.name
+            await user.save()
+        else:
+            # Create new user
+            user = User(
+                email=user_data.email,
+                name=user_data.name,
+                firebase_uid=decoded_token.get("sub")
+            )
+            await user.save()
+        
+        return {"message": "User created/updated successfully", "user": user}
+    except Exception as e:
+        logger.error(f"Error creating/updating user: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     import uvicorn
