@@ -3,6 +3,10 @@ from starlette.websockets import WebSocketState
 from typing import Dict, Any
 import json
 import logging
+import os
+from deepgram import DeepgramClient, LiveTranscriptionEvents, LiveOptions
+import asyncio
+import websockets
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -108,66 +112,47 @@ async def process_audio_websocket(websocket: WebSocket) -> None:
             await websocket.close()
 
 async def audio_to_text_websocket(websocket: WebSocket) -> None:
-    """
-    WebSocket endpoint to receive raw audio data and convert it to text using Deepgram.
-    """
     await websocket.accept()
-    session_id = None
-    user_id = None
-    lecture_id = None
-    transcript_id = None
+    DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+    uri = "wss://api.deepgram.com/v1/listen"
+    headers = {
+        "Authorization": f"token {DEEPGRAM_API_KEY}"
+    }
     try:
-        # Optionally, receive an initial JSON/text message for user/session info
-        # Commented out for now, as the frontend sends audio immediately
-        # init_data = await websocket.receive_text()
-        # params = json.loads(init_data)
-        # user_id = params.get("user_id")
-        # lecture_id = params.get("lecture_id")
+        async with websockets.connect(uri, extra_headers=headers) as dg_ws:
+            print("Connected to Deepgram WebSocket.")
 
-        # Start a new transcription session
-        session_id = await transcription_service.start_transcription_session(
-            user_id=user_id,
-            lecture_id=lecture_id,
-            callback=None  # We'll handle callbacks below
-        )
-        active_connections[session_id] = websocket
-        await websocket.send_json({
-            "status": "connected",
-            "session_id": session_id,
-            "message": "Connected to audio-to-text streaming API"
-        })
+            async def receive_transcripts():
+                try:
+                    async for message in dg_ws:
+                        try:
+                            data = json.loads(message)
+                            # Extract transcript text and send to frontend
+                            if (
+                                data.get("type") == "Results"
+                                and data.get("channel")
+                                and data["channel"]["alternatives"]
+                            ):
+                                transcript = data["channel"]["alternatives"][0].get("transcript", "")
+                                if transcript:
+                                    await websocket.send_json({"transcript": transcript})
+                        except Exception as e:
+                            print("Non-JSON message from Deepgram:", message)
+                except Exception as e:
+                    print("Deepgram WebSocket closed:", e)
 
-        # Buffer for transcript
-        transcript_buffer = ""
+            recv_task = asyncio.create_task(receive_transcripts())
 
-        while True:
-            message = await websocket.receive()
-            if "bytes" in message:
-                audio_chunk = message["bytes"]
-                # Send audio_chunk to your STT service (e.g., Deepgram, Google STT, etc.)
-                # For now, we'll mock the transcript result
-                # Replace this with actual STT integration
-                transcript_text = "[Mock transcript: audio received]"
-                transcript_buffer += transcript_text + " "
-                await websocket.send_json({"transcript": transcript_buffer.strip()})
-            elif "text" in message:
-                # Optionally handle text messages (e.g., control)
-                pass
-    except WebSocketDisconnect:
-        logger.info(f"WebSocket disconnected for session {session_id}")
+            while True:
+                message = await websocket.receive()
+                if "bytes" in message:
+                    await dg_ws.send(message["bytes"])
+                elif "text" in message:
+                    pass
     except Exception as e:
-        logger.error(f"Error in audio-to-text: {str(e)}")
-        if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.send_json({
-                "status": "error",
-                "message": str(e),
-                "session_id": session_id if session_id else "unknown"
-            })
+        print("Error in audio_to_text_websocket:", e)
+        await websocket.close()
     finally:
-        # Clean up
-        if session_id:
-            await transcription_service.end_session(session_id)
-            active_connections.pop(session_id, None)
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
 
@@ -277,4 +262,6 @@ async def evaluate_understanding_websocket(websocket: WebSocket) -> None:
         })
     finally:
         if websocket.client_state == WebSocketState.CONNECTED:
-            await websocket.close() 
+            await websocket.close()
+
+# NOTE: Ensure your frontend is sending audio in a Deepgram-supported format (e.g., 16-bit PCM, mono, 16kHz or 8kHz, little-endian) 
