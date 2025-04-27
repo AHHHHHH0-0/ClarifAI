@@ -8,9 +8,6 @@ import base64
 # Initialize logger
 logger = logging.getLogger(__name__)
 
-# Store active WebSocket connections
-active_connections = {}
-
 # Import services
 from backend.src.services.gemini import GeminiService
 from backend.src.services.audio import create_transcription_service
@@ -180,9 +177,6 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
                 callback=transcription_callback
             )
             
-            # Store the WebSocket connection for reference
-            active_connections[session_id] = websocket
-            
             # Send initial confirmation
             await websocket.send_json({
                 "status": "connected",
@@ -228,7 +222,6 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
         # Clean up
         if session_id:
             await transcription_service.end_session(session_id)
-            active_connections.pop(session_id, None)
         
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
