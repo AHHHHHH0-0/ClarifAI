@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
@@ -6,6 +6,9 @@ import logging
 import os
 import jwt
 from pydantic import BaseModel
+from google.oauth2 import id_token
+from google.auth.transport import requests as google_requests
+from backend.src.services.gemini import GeminiService
 
 # Import database functions for REST endpoints
 from backend.src.database.db import (
@@ -51,6 +54,10 @@ class UserResponse(BaseModel):
     disabled: bool = False
     created_at: datetime
     last_login: Optional[datetime] = None
+
+class FirebaseUser(BaseModel):
+    email: str
+    name: str | None = None
 
 # Authentication functions
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
@@ -250,5 +257,18 @@ async def get_other_concepts_endpoint(
     
     concepts = await get_other_concepts(transcript_id)
     return [concept.dict() for concept in concepts]
+
+gemini_service = GeminiService()
+
+class ExplainRequest(BaseModel):
+    text: str
+
+@router.post("/explain")
+async def explain_concept(request: ExplainRequest):
+    try:
+        explanation = gemini_service._safe_api_call(request.text)
+        return {"explanation": explanation}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gemini error: {str(e)}")
 
 # This file would contain additional REST endpoints as needed 

@@ -11,7 +11,8 @@ ClarifAI is a web application designed to enhance learning through audio content
 - **Interactive Q&A**: Engage in back-and-forth dialogue with the language model to deepen understanding of topics.
 
 ## Future Improvements
-- **Multilingual Support**: Enable explanations and interactions in multiple languages.
+- **Implement Multimodal Features**: introduce a variety of new output and modes of learning 
+- **Extensive Explanation: further elaboration provided upon a click of a button 
 - **Video Processing**: Extend functionality to handle video recordings with synchronized transcripts and explanations.
 - **User Analytics Dashboard**: Provide insights into learning patterns, frequently reviewed concepts, and progress over time.
 - **Collaboration Tools**: Allow users to share recordings and explanations with peers for group study sessions.

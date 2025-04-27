@@ -5,9 +5,9 @@ import Sidebar from './components/Layout/Sidebar';
 
 // Mock data from DashboardPage for consistency
 const mockConversations = [
-  { id: 1, name: 'Biology Lecture' },
-  { id: 2, name: 'Math Q&A' },
-  { id: 3, name: 'History Review' },
+  { id: '1', name: 'Biology Lecture' },
+  { id: '2', name: 'Math Q&A' },
+  { id: '3', name: 'History Review' },
 ];
 
 /**
@@ -15,7 +15,7 @@ const mockConversations = [
  */
 const TeachToLearn: React.FC = () => {
   const [mode, setMode] = useState<'student' | 'teacher'>('teacher');
-  const [selectedConv, setSelectedConv] = useState(1);
+  const [selectedConv, setSelectedConv] = useState('1');
   const [isSpeaking, setIsSpeaking] = useState(false); // Mock speaking state
   
   const navigate = useNavigate();

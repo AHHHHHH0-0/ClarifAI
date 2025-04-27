@@ -3,9 +3,9 @@ import { motion } from 'framer-motion';
 import { Link, useLocation } from 'react-router-dom';
 
 interface SidebarProps {
-  conversations: Array<{ id: number; name: string }>;
-  selectedConv: number;
-  onConversationSelect: (id: number) => void;
+  conversations: Array<{ id: string; name: string }>;
+  selectedConv: string;
+  onConversationSelect: (id: string) => void;
 }
 
 /**
