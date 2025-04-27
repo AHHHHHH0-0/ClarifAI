@@ -9,9 +9,9 @@ import {
 } from "./hooks/useConceptFlag";
 
 const mockConversations = [
-  { id: 1, name: "Biology Lecture" },
-  { id: 2, name: "Math Q&A" },
-  { id: 3, name: "History Review" },
+  { id: "1", name: "Biology Lecture" },
+  { id: "2", name: "Math Q&A" },
+  { id: "3", name: "History Review" },
 ];
 
 const mockTranscript = [
@@ -30,7 +30,7 @@ const mockCurrentConcept: ConceptFlagData = {
 
 const DashboardPage: React.FC = () => {
   const [mode, setMode] = useState<"student" | "teacher">("student");
-  const [selectedConv, setSelectedConv] = useState(1);
+  const [selectedConv, setSelectedConv] = useState("1");
   const [transcript, setTranscript] = useState(mockTranscript);
   const [currentConcept, setCurrentConcept] =
     useState<ConceptFlagData>(mockCurrentConcept);
