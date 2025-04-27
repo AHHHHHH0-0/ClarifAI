@@ -8,6 +8,7 @@ import jwt
 from pydantic import BaseModel
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
+from backend.src.services.gemini import GeminiService
 
 # Import database functions for REST endpoints
 from backend.src.database.db import (
@@ -256,5 +257,18 @@ async def get_other_concepts_endpoint(
     
     concepts = await get_other_concepts(transcript_id)
     return [concept.dict() for concept in concepts]
+
+gemini_service = GeminiService()
+
+class ExplainRequest(BaseModel):
+    text: str
+
+@router.post("/explain")
+async def explain_concept(request: ExplainRequest):
+    try:
+        explanation = gemini_service._safe_api_call(request.text)
+        return {"explanation": explanation}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Gemini error: {str(e)}")
 
 # This file would contain additional REST endpoints as needed 

@@ -3,6 +3,9 @@ from starlette.websockets import WebSocketState
 from typing import Dict, Any
 import json
 import logging
+import os
+from deepgram import Deepgram
+import asyncio
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -116,116 +119,46 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
     user_id = None
     lecture_id = None
     transcript_id = None
-    
+    DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
+    dg_client = Deepgram(DEEPGRAM_API_KEY)
+    transcript_buffer = ""
+    dg_socket = None
+
     try:
-        # First, get initialization parameters
-        init_data = await websocket.receive_text()
-        params = json.loads(init_data)
-        
-        # Extract user_id and lecture_id if provided
-        user_id = params.get("user_id")
-        lecture_id = params.get("lecture_id")
-        
-        logger.info(f"Initializing audio transcription for user_id: {user_id}, lecture_id: {lecture_id}")
-        
-        # Define callback function to forward transcription to client
-        async def transcription_callback(result: Dict[str, Any]):
-            if websocket.client_state == WebSocketState.CONNECTED:
-                try:
-                    # If this is a final result with a transcript, also process with Gemini
-                    if result.get("is_final", False) and result.get("full_transcript"):
-                        full_transcript = result.get("full_transcript")
-                        
-                        # Save the transcript to the database
-                        transcript_id = await save_transcript(user_id, lecture_id, full_transcript)
-                        
-                        # Process with Gemini service
-                        gemini_result = await gemini_service.process_audio_transcript(
-                            full_transcript,
-                            ""  # No previous transcript needed as service manages the buffer
-                        )
-                        
-                        # Add the processed concepts to the result
-                        result["concepts"] = gemini_result.get("concepts", [])
-                        result["current_concept"] = gemini_result.get("current_concept")
-                        
-                        # Save detected concepts that aren't flagged
-                        for concept in gemini_result.get("concepts", []):
-                            # Skip the current concept as it might be flagged
-                            if concept.get("is_current", False):
-                                continue
-                                
-                            await save_other_concept(
-                                concept_name=concept.get("concept_name", "Unknown Concept"),
-                                text_snippet=concept.get("text_snippet", ""),
-                                difficulty_level=concept.get("difficulty_level", 1),
-                                start_position=concept.get("start_position", 0),
-                                end_position=concept.get("end_position", 0),
-                                transcript_id=transcript_id,
-                                lecture_id=lecture_id
-                            )
-                        
-                        # Generate and save organized notes
-                        organized_content = await gemini_service.generate_organized_notes(full_transcript)
-                        
-                        # Save the organized notes
-                        await save_organized_notes(
-                            user_id=user_id,
-                            lecture_id=lecture_id,
-                            title=organized_content.get("title", "Untitled Lecture"),
-                            content=organized_content.get("content", ""),
-                            raw_transcript=full_transcript
-                        )
-                    
-                    # Send result to client
-                    await websocket.send_json(result)
-                except Exception as e:
-                    logger.error(f"Error in transcription callback: {str(e)}")
-        
-        # Start a new transcription session with the callback
-        session_id = await transcription_service.start_transcription_session(
-            user_id=user_id,
-            lecture_id=lecture_id,
-            callback=transcription_callback
-        )
-        
-        # Store the WebSocket connection for reference
-        active_connections[session_id] = websocket
-        
-        # Send initial confirmation
+        # Connect to Deepgram's real-time streaming API
+        dg_socket = await dg_client.transcription.live({
+            'punctuate': True,
+            'language': 'en-US',
+        })
+
+        async def on_transcript(data, **kwargs):
+            nonlocal transcript_buffer
+            if 'channel' in data and 'alternatives' in data['channel']:
+                transcript = data['channel']['alternatives'][0]['transcript']
+                if transcript:
+                    transcript_buffer += transcript + " "
+                    await websocket.send_json({"transcript": transcript_buffer.strip()})
+
+        dg_socket.on('transcriptReceived', on_transcript)
+
         await websocket.send_json({
             "status": "connected",
-            "session_id": session_id,
-            "message": "Connected to Deepgram streaming API"
+            "message": "Connected to audio-to-text streaming API"
         })
-        
-        # Listen for audio chunks from the client
+
         while True:
-            # Receive audio chunk from the client
-            data = await websocket.receive_text()
-            audio_data = json.loads(data)
-            
-            # Extract base64 audio
-            base64_audio = audio_data.get("audio", "")
-            if not base64_audio:
-                await websocket.send_json({
-                    "status": "error",
-                    "message": "No audio data provided",
-                    "session_id": session_id
-                })
-                continue
-            
-            # Send to Deepgram (response comes through the callback)
-            await transcription_service.transcribe_audio(
-                base64_audio, 
-                session_id,
-                user_id, 
-                lecture_id
-            )
-            
+            message = await websocket.receive()
+            if "bytes" in message:
+                await dg_socket.send(message["bytes"])
+            elif "text" in message:
+                pass
     except WebSocketDisconnect:
+        if dg_socket:
+            await dg_socket.finish()
         logger.info(f"WebSocket disconnected for session {session_id}")
     except Exception as e:
+        if dg_socket:
+            await dg_socket.finish()
         logger.error(f"Error in audio-to-text: {str(e)}")
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.send_json({
@@ -238,7 +171,6 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
         if session_id:
             await transcription_service.end_session(session_id)
             active_connections.pop(session_id, None)
-        
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
 
