@@ -10,6 +10,9 @@ ClarifAI is a web application designed to enhance learning through audio content
 - **Teach-to-Learn Mode**: A conversational mode where the language model quizzes the user on recorded concepts, fostering active learning.
 - **Interactive Q&A**: Engage in back-and-forth dialogue with the language model to deepen understanding of topics.
 
+<img width="1132" alt="Screenshot 2025-04-26 at 9 40 08 PM" src="https://github.com/user-attachments/assets/5938bb60-bf02-4be8-89d6-e384c4724fde" />
+
+
 ## Future Improvements
 - **Implement Multimodal Features**: introduce a variety of new output and modes of learning 
 - **Extensive Explanation: further elaboration provided upon a click of a button 
