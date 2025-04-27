@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Sidebar from './components/Layout/Sidebar';
+import { Routes, Route } from 'react-router-dom';
 
 const mockConversations = [
   { id: 1, name: 'Biology Lecture' },
@@ -66,8 +67,8 @@ const DashboardPage: React.FC = () => {
             className="bg-primary-light hover:bg-primary text-white px-6 py-2 rounded-lg font-semibold shadow transition-colors duration-200"
             onClick={handleConfused}
           >
-            Ask for Clarification
-          </button>
+            Ask
+                      </button>
         </div>
       </main>
 
