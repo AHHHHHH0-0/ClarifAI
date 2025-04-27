@@ -1,16 +1,16 @@
-import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
+import { initializeApp } from "firebase/app";
+import { getAuth, GoogleAuthProvider } from "firebase/auth";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyDERFSdOLgKg9JrywKfiuLZsW-9PTdsm0g",
-  authDomain: "clarifai-5f201.firebaseapp.com",
-  projectId: "clarifai-5f201",
-  storageBucket: "clarifai-5f201.appspot.com",
-  messagingSenderId: "824173511993",
-  appId: "1:824173511993:web:cfc5cbf7f0b17cf9a754e8",
-  measurementId: "G-N0T2ENK0LQ"
+  apiKey: process.env.REACT_APP_FIREBASE_API_KEY!,
+  authDomain: process.env.REACT_APP_FIREBASE_AUTH_DOMAIN!,
+  projectId: process.env.REACT_APP_FIREBASE_PROJECT_ID!,
+  storageBucket: process.env.REACT_APP_FIREBASE_STORAGE_BUCKET!,
+  messagingSenderId: process.env.REACT_APP_FIREBASE_MESSAGING_SENDER_ID!,
+  appId: process.env.REACT_APP_FIREBASE_APP_ID!,
+  measurementId: process.env.REACT_APP_FIREBASE_MEASUREMENT_ID!,
 };
 
 const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider(); 
+export const googleProvider = new GoogleAuthProvider();
