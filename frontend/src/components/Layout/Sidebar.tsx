@@ -25,7 +25,7 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
 
   return (
     <motion.aside
-      className="bg-[#3B82F6] border-r border-[#F9FAFB] h-screen flex flex-col"
+      className="bg-primary text-white border-r border-border h-screen flex flex-col"
       animate={{ 
         width: isExpanded ? '240px' : '72px',
       }}
@@ -48,7 +48,7 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
               alt="ClarifAI Logo" 
               className="w-6 h-6 mr-2"
             />
-            <h1 className="text-white font-semibold text-lg">ClarifAI</h1>
+            <h1 className="font-heading text-white font-bold text-lg">ClarifAI</h1>
           </motion.div>
         ) : (
           <motion.div
@@ -64,7 +64,7 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
           </motion.div>
         )}
         <button 
-          className="text-white hover:bg-blue-600 rounded-md p-2"
+          className="text-white hover:bg-primary-hover rounded-md p-2 transition-colors duration-200"
           onClick={toggleSidebar}
         >
           {isExpanded ? (
@@ -85,7 +85,7 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
           <li>
             <Link 
               to="/dashboard" 
-              className={`flex items-center p-2 pl-3 rounded-lg ${isActive('/dashboard') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-600'}`}
+              className={`flex items-center p-2 pl-3 rounded-lg transition-colors duration-200 ${isActive('/dashboard') ? 'bg-primary-hover text-white' : 'text-white hover:bg-primary-hover'}`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
@@ -104,7 +104,7 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
           <li>
             <Link 
               to="/teach-to-learn" 
-              className={`flex items-center p-2 pl-3 rounded-lg ${isActive('/teach-to-learn') ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-600'}`}
+              className={`flex items-center p-2 pl-3 rounded-lg transition-colors duration-200 ${isActive('/teach-to-learn') ? 'bg-primary-hover text-white' : 'text-white hover:bg-primary-hover'}`}
             >
               <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
@@ -125,7 +125,7 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
       </nav>
 
       {/* Conversations Section */}
-      <div className="px-4 py-4 border-t border-blue-400">
+      <div className="px-4 py-4 border-t border-primary-hover">
         <div className="flex items-center justify-between mb-4 px-4">
           {isExpanded && (
             <motion.span 
@@ -138,7 +138,7 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
             </motion.span>
           )}
           <button 
-            className="text-white hover:bg-blue-600 rounded-full p-1"
+            className="text-white hover:bg-primary-hover rounded-full p-1 transition-colors duration-200"
             aria-label="New Conversation"
             title="New Conversation"
           >
@@ -153,10 +153,10 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
           {conversations.map((conv) => (
             <li key={conv.id}>
               <button
-                className={`w-full flex items-center p-2 pl-3 rounded-lg transition-colors ${selectedConv === conv.id ? 'bg-blue-700 text-white' : 'text-white hover:bg-blue-600'}`}
+                className={`w-full flex items-center p-2 pl-3 rounded-lg transition-colors duration-200 ${selectedConv === conv.id ? 'bg-primary-hover text-white' : 'text-white hover:bg-primary-hover'}`}
                 onClick={() => onConversationSelect(conv.id)}
               >
-                <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-blue-200 text-blue-800 text-xs font-medium">
+                <span className="flex-shrink-0 w-6 h-6 flex items-center justify-center rounded-full bg-white text-primary text-xs font-medium">
                   {conv.name[0]}
                 </span>
                 {isExpanded && (
@@ -176,10 +176,10 @@ const Sidebar: React.FC<SidebarProps> = ({ conversations, selectedConv, onConver
       </div>
 
       {/* User Profile / Settings */}
-      <div className="px-4 py-4 border-t border-blue-400">
-        <button className="w-full flex items-center p-2 pl-3 rounded-lg text-white hover:bg-blue-600">
-          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center">
-            <span className="text-blue-800 font-bold text-sm">U</span>
+      <div className="px-4 py-4 border-t border-primary-hover">
+        <button className="w-full flex items-center p-2 pl-3 rounded-lg text-white hover:bg-primary-hover transition-colors duration-200">
+          <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center">
+            <span className="text-primary font-bold text-sm">U</span>
           </div>
           {isExpanded && (
             <motion.span 

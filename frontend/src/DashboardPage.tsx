@@ -33,7 +33,7 @@ const DashboardPage: React.FC = () => {
   };
 
   return (
-    <div className="flex h-screen bg-gray-50">
+    <div className="flex h-screen bg-background-light">
       {/* Sidebar */}
       <Sidebar 
         conversations={mockConversations}
@@ -46,13 +46,13 @@ const DashboardPage: React.FC = () => {
         {/* Mode Switch */}
         <div className="flex gap-0 mt-6 ml-8">
           <button
-            className={`px-6 py-2 border border-gray-300 rounded-l-lg font-semibold text-slate-700 bg-white transition ${mode === 'student' ? 'bg-blue-500 text-white border-blue-500' : 'hover:bg-gray-100'}`}
+            className={`px-6 py-2 border border-border rounded-l-lg font-semibold transition-colors duration-200 ${mode === 'student' ? 'bg-primary text-white border-primary' : 'bg-white text-text hover:bg-gray-50'}`}
             onClick={() => handleModeChange('student')}
           >
             Student
           </button>
           <button
-            className={`px-6 py-2 border border-gray-300 rounded-r-lg font-semibold text-slate-700 bg-white transition ${mode === 'teacher' ? 'bg-blue-500 text-white border-blue-500' : 'hover:bg-gray-100'}`}
+            className={`px-6 py-2 border border-border rounded-r-lg font-semibold transition-colors duration-200 ${mode === 'teacher' ? 'bg-primary text-white border-primary' : 'bg-white text-text hover:bg-gray-50'}`}
             onClick={() => handleModeChange('teacher')}
           >
             Teacher
@@ -63,7 +63,7 @@ const DashboardPage: React.FC = () => {
         {/* Bottom Center Controls */}
         <div className="absolute left-1/2 bottom-8 transform -translate-x-1/2 flex gap-6">
           <button
-            className="bg-amber-400 hover:bg-amber-500 text-slate-700 px-6 py-2 rounded-lg font-semibold shadow transition"
+            className="bg-primary-light hover:bg-primary text-white px-6 py-2 rounded-lg font-semibold shadow transition-colors duration-200"
             onClick={handleConfused}
           >
             Ask for Clarification
@@ -72,12 +72,12 @@ const DashboardPage: React.FC = () => {
       </main>
 
       {/* Transcript Sidebar */}
-      <aside className="w-80 bg-white border-l border-gray-200 flex flex-col">
-        <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100">
-          <span className="inline-block w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-500 font-bold">T</span>
-          <span className="font-semibold text-slate-700 text-lg">Transcript</span>
+      <aside className="w-80 bg-background border-l border-border flex flex-col">
+        <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+          <span className="inline-block w-6 h-6 bg-primary-light/10 rounded-full flex items-center justify-center text-primary font-bold">T</span>
+          <span className="font-heading font-bold text-text text-lg">Transcript</span>
         </div>
-        <div className="flex-1 overflow-y-auto px-4 py-4 text-slate-700 text-sm">
+        <div className="flex-1 overflow-y-auto px-4 py-4 text-text-muted text-sm">
           {transcript.map((line, idx) => (
             <div key={idx} className="mb-2">{line}</div>
           ))}

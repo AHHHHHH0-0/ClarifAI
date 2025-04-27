@@ -13,7 +13,7 @@ const HeroSection: React.FC = () => {
   }));
 
   return (
-    <section className="relative min-h-screen bg-white overflow-hidden flex flex-col items-center justify-center px-4">
+    <section className="relative min-h-screen bg-background overflow-hidden flex flex-col items-center justify-center px-4">
       {/* Background Bubbles */}
       {bubbles.map((bubble) => (
         <ThoughtBubble
@@ -27,10 +27,10 @@ const HeroSection: React.FC = () => {
       
       {/* Hero Content */}
       <div className="z-10 max-w-6xl mx-auto text-center mb-16">
-        <h1 className="text-4xl md:text-6xl font-bold mb-6">
+        <h1 className="text-4xl md:text-6xl font-bold mb-6 text-text">
           Turn Confusion into Clarity
         </h1>
-        <p className="text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto mb-8">
+        <p className="text-xl md:text-2xl text-text-muted max-w-3xl mx-auto mb-8">
           Instantly simplify complex lecture content with a single click.
         </p>
       </div>
@@ -43,7 +43,7 @@ const HeroSection: React.FC = () => {
       
       {/* CTA Button */}
       <div className="z-10 mt-16">
-        <button className="bg-accent hover:bg-blue-900 transition-colors text-white font-medium py-3 px-8 rounded-lg text-lg shadow-lg hover:shadow-xl">
+        <button className="bg-primary hover:bg-primary-hover transition-colors duration-200 text-white font-medium py-3 px-8 rounded-lg text-lg shadow-lg hover:shadow-xl">
           Get Started - It's Free
         </button>
       </div>

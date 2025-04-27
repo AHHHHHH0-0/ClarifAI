@@ -11,7 +11,7 @@ type ThoughtBubbleProps = {
 const ThoughtBubble: React.FC<ThoughtBubbleProps> = ({ size, left, delay, duration }) => {
   return (
     <motion.div
-      className="absolute bottom-0 rounded-full bg-gray-100"
+      className="absolute bottom-0 rounded-full bg-border"
       style={{
         width: `${size}px`,
         height: `${size}px`,

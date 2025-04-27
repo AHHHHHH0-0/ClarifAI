@@ -5,21 +5,23 @@ module.exports = {
     extend: {
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        heading: ['Poppins', 'system-ui', 'sans-serif'],
       },
       colors: {
         primary: {
-          50: "#f0f9ff",
-          100: "#e0f2fe",
-          200: "#bae6fd",
-          300: "#7dd3fc",
-          400: "#38bdf8",
-          500: "#0ea5e9",
-          600: "#0284c7",
-          700: "#0369a1",
-          800: "#075985",
-          900: "#0c4a6e",
+          DEFAULT: "#023E7D",  // Deep Blue
+          hover: "#0453A0",    // Slightly lighter deep blue
+          light: "#3B82F6",    // Secondary Light Blue
         },
-        accent: "#023e7d",
+        text: {
+          DEFAULT: "#374151",  // Dark Gray
+          muted: "#6B7280",    // Medium Gray
+        },
+        border: "#F3F4F6",     // Light Gray
+        background: {
+          DEFAULT: "#FFFFFF",  // White
+          light: "#F9FAFB",    // Very Light Gray
+        },
       },
       animation: {
         "pulse-slow": "pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite",
