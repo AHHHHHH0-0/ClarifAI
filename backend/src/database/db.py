@@ -12,7 +12,6 @@ from backend.src.database.models import Transcript, FlaggedConcept, OrganizedNot
 logger = logging.getLogger(__name__)
 
 # Set up password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 async def init_db():
     """Initialize database connection and register models with Beanie"""
@@ -44,13 +43,9 @@ async def init_db():
         return False
 
 # Authentication helpers
-def hash_password(password: str) -> str:
-    """Hash a password for storing."""
-    return pwd_context.hash(password)
 
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a stored password against one provided by user"""
-    return pwd_context.verify(plain_password, hashed_password)
+
+
 
 # User operations
 async def create_user(email: str, password: str, full_name: Optional[str] = None) -> Optional[User]:
@@ -67,7 +62,6 @@ async def create_user(email: str, password: str, full_name: Optional[str] = None
         # Create new user with hashed password
         user = User(
             email=email,
-            hashed_password=hash_password(password),
             full_name=full_name
         )
         await user.insert()
@@ -84,8 +78,7 @@ async def authenticate_user(email: str, password: str) -> Optional[User]:
         user = await User.find_one({"email": email})
         if not user:
             return None
-        if not verify_password(password, user.hashed_password):
-            return None
+       
             
         # Update last login time
         user.last_login = datetime.utcnow()

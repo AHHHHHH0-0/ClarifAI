@@ -3,9 +3,6 @@ from starlette.websockets import WebSocketState
 from typing import Dict, Any
 import json
 import logging
-import os
-from deepgram import Deepgram
-import asyncio
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -119,46 +116,46 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
     user_id = None
     lecture_id = None
     transcript_id = None
-    DEEPGRAM_API_KEY = os.getenv("DEEPGRAM_API_KEY")
-    dg_client = Deepgram(DEEPGRAM_API_KEY)
-    transcript_buffer = ""
-    dg_socket = None
-
     try:
-        # Connect to Deepgram's real-time streaming API
-        dg_socket = await dg_client.transcription.live({
-            'punctuate': True,
-            'language': 'en-US',
-        })
+        # Optionally, receive an initial JSON/text message for user/session info
+        # Commented out for now, as the frontend sends audio immediately
+        # init_data = await websocket.receive_text()
+        # params = json.loads(init_data)
+        # user_id = params.get("user_id")
+        # lecture_id = params.get("lecture_id")
 
-        async def on_transcript(data, **kwargs):
-            nonlocal transcript_buffer
-            if 'channel' in data and 'alternatives' in data['channel']:
-                transcript = data['channel']['alternatives'][0]['transcript']
-                if transcript:
-                    transcript_buffer += transcript + " "
-                    await websocket.send_json({"transcript": transcript_buffer.strip()})
-
-        dg_socket.on('transcriptReceived', on_transcript)
-
+        # Start a new transcription session
+        session_id = await transcription_service.start_transcription_session(
+            user_id=user_id,
+            lecture_id=lecture_id,
+            callback=None  # We'll handle callbacks below
+        )
+        active_connections[session_id] = websocket
         await websocket.send_json({
             "status": "connected",
+            "session_id": session_id,
             "message": "Connected to audio-to-text streaming API"
         })
+
+        # Buffer for transcript
+        transcript_buffer = ""
 
         while True:
             message = await websocket.receive()
             if "bytes" in message:
-                await dg_socket.send(message["bytes"])
+                audio_chunk = message["bytes"]
+                # Send audio_chunk to your STT service (e.g., Deepgram, Google STT, etc.)
+                # For now, we'll mock the transcript result
+                # Replace this with actual STT integration
+                transcript_text = "[Mock transcript: audio received]"
+                transcript_buffer += transcript_text + " "
+                await websocket.send_json({"transcript": transcript_buffer.strip()})
             elif "text" in message:
+                # Optionally handle text messages (e.g., control)
                 pass
     except WebSocketDisconnect:
-        if dg_socket:
-            await dg_socket.finish()
         logger.info(f"WebSocket disconnected for session {session_id}")
     except Exception as e:
-        if dg_socket:
-            await dg_socket.finish()
         logger.error(f"Error in audio-to-text: {str(e)}")
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.send_json({

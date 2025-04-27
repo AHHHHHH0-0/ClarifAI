@@ -303,7 +303,87 @@ class GeminiService:
             "evaluation": evaluation_data,
             "status": "success"
         }
+    
+    async def teach_to_learn(self, topic: str, user_response: str, conversation_history: List[Dict[str, str]] = None) -> Dict[str, Any]:
+        """
+        Interactive teach-to-learn mode that evaluates user understanding and creates
+        follow-up questions to improve comprehension.
+        
+        Args:
+            topic: The main topic or concept being discussed
+            user_response: The user's latest spoken response
+            conversation_history: List of previous exchanges in the conversation
             
+        Returns:
+            Dict containing:
+            - understanding_score: Integer from 0-100 representing mastery level
+            - response: Text response to be spoken back to the user
+            - follow_up_question: Next question to deepen understanding
+            - is_complete: Boolean indicating if the learning session can conclude
+        """
+        # Initialize conversation history if not provided
+        if conversation_history is None:
+            conversation_history = []
+            
+        # Define the schema for the response
+        response_schema = {
+            "type": "object",
+            "properties": {
+                "understanding_score": {"type": "integer", "minimum": 0, "maximum": 100},
+                "evaluation": {"type": "string"},
+                "response": {"type": "string"},
+                "follow_up_question": {"type": "string"},
+                "is_complete": {"type": "boolean"}
+            },
+            "required": ["understanding_score", "response", "follow_up_question", "is_complete"]
+        }
+        
+        # Convert conversation history to formatted string
+        conversation_text = ""
+        for exchange in conversation_history:
+            if "user" in exchange:
+                conversation_text += f"User: {exchange['user']}\n"
+            if "ai" in exchange:
+                conversation_text += f"AI: {exchange['ai']}\n"
+        
+        # Create the prompt for teaching interaction
+        prompt = f"""
+        You are an expert teacher helping a student understand the concept of "{topic}".
+        Your goal is to evaluate their understanding and ask questions that will help them reach mastery.
+        
+        Previous conversation:
+        {conversation_text}
+        
+        Student's latest response:
+        {user_response}
+        
+        Evaluate their current understanding of the concept on a scale from 0-100.
+        Then provide:
+        1. A brief evaluation of their understanding
+        2. A response that addresses any misconceptions and reinforces correct understanding
+        3. A follow-up question that will help deepen their understanding
+        4. Whether they've reached sufficient mastery (85% or higher)
+        
+        Keep the response conversational, engaging, and focused on the concept.
+        Don't directly tell them their score, but use it to guide your teaching approach.
+        """
+        
+        # Make the API call with the schema
+        result = self._safe_api_call(prompt, response_schema)
+        
+        # Handle invalid or empty responses
+        if not result or not isinstance(result, dict):
+            # Return a default format
+            return {
+                "understanding_score": 50,
+                "evaluation": "I couldn't properly evaluate your response.",
+                "response": "That's an interesting perspective. Let's explore this topic a bit more.",
+                "follow_up_question": f"Can you explain more about how you understand {topic}?",
+                "is_complete": False
+            }
+        
+        return result
+    
     async def get_flagged_history(self) -> Dict[str, Any]:
         """
         Retrieve the history of flagged concepts.
