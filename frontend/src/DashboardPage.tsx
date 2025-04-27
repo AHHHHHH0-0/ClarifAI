@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import Sidebar from './components/Layout/Sidebar';
 
 const mockConversations = [
   { id: 1, name: 'Biology Lecture' },
@@ -22,6 +24,14 @@ const DashboardPage: React.FC = () => {
   useEffect(() => {
     setUserName(localStorage.getItem("userName"));
   }, []);
+  const navigate = useNavigate();
+
+  const handleModeChange = (newMode: 'student' | 'teacher') => {
+    setMode(newMode);
+    if (newMode === 'teacher') {
+      navigate('/teach-to-learn');
+    }
+  };
 
   const handleConfused = () => {
     alert('Explain: Photosynthesis is the process by which green plants convert sunlight into energy.');
@@ -52,6 +62,11 @@ const DashboardPage: React.FC = () => {
           ))}
         </div>
       </aside>
+      <Sidebar 
+        conversations={mockConversations}
+        selectedConv={selectedConv}
+        onConversationSelect={setSelectedConv}
+      />
 
       {/* Main content */}
       <main className="flex-1 flex flex-col relative">
@@ -63,13 +78,13 @@ const DashboardPage: React.FC = () => {
         <div className="flex gap-0 mt-6 ml-8">
           <button
             className={`px-6 py-2 border border-gray-300 rounded-l-lg font-semibold text-slate-700 bg-white transition ${mode === 'student' ? 'bg-blue-500 text-white border-blue-500' : 'hover:bg-gray-100'}`}
-            onClick={() => setMode('student')}
+            onClick={() => handleModeChange('student')}
           >
             Student
           </button>
           <button
             className={`px-6 py-2 border border-gray-300 rounded-r-lg font-semibold text-slate-700 bg-white transition ${mode === 'teacher' ? 'bg-blue-500 text-white border-blue-500' : 'hover:bg-gray-100'}`}
-            onClick={() => setMode('teacher')}
+            onClick={() => handleModeChange('teacher')}
           >
             Teacher
           </button>

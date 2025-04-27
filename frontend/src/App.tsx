@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Link } from 'react-router-dom';
 import LoginPage from './LoginPage';
 import HeroSection from './components/Hero/HeroSection';
 import DashboardPage from './DashboardPage';
+import TeachToLearn from './TeachToLearn';
 
 function HomePage() {
   return (
@@ -34,6 +35,7 @@ function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
+        <Route path="/teach-to-learn" element={<TeachToLearn />} />
       </Routes>
     </BrowserRouter>
   );
