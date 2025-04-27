@@ -1,8 +1,9 @@
 from fastapi import WebSocket, WebSocketDisconnect
 from starlette.websockets import WebSocketState
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 import json
 import logging
+import asyncio
 
 # Initialize logger
 logger = logging.getLogger(__name__)
@@ -245,68 +246,43 @@ async def audio_to_text_websocket(websocket: WebSocket) -> None:
 async def flag_concept_websocket(websocket: WebSocket) -> None:
     logger.info("New connection to flag_concept_websocket")
     try:
+        # Accept the connection immediately
         await websocket.accept()
         logger.info("WebSocket connection accepted")
         
+        # First message might be auth token
+        auth_message = None
+        auth_token = None
+        
+        try:
+            # Wait for first message with a timeout
+            auth_message = await asyncio.wait_for(websocket.receive_text(), timeout=5.0)
+            logger.info("Received initial message")
+            
+            # Try to parse as JSON and look for auth_token
+            try:
+                auth_data = json.loads(auth_message)
+                if "auth_token" in auth_data:
+                    auth_token = auth_data["auth_token"]
+                    logger.info("Received authentication token")
+                    # Send acknowledgment
+                    await websocket.send_json({"status": "authenticated"})
+                else:
+                    # If not auth token, treat as regular message
+                    logger.info("First message is not an auth token, processing as regular message")
+                    await process_flag_request(websocket, auth_message, auth_token)
+            except json.JSONDecodeError:
+                # If not valid JSON, treat as regular message
+                logger.warning("First message is not valid JSON, treating as text")
+                await process_flag_request(websocket, auth_message, None)
+        except asyncio.TimeoutError:
+            logger.warning("No initial message received within timeout")
+        
+        # Main message processing loop
         while True:
-            # Receive concept flagging request
-            logger.info("Waiting for concept flagging request...")
             data = await websocket.receive_text()
             logger.info(f"Received data: {data[:100]}...")  # Log first 100 chars
-            
-            try:
-                flag_data = json.loads(data)
-                logger.info(f"Parsed JSON data: {flag_data}")
-                
-                concept_name = flag_data.get("concept_name", "")
-                context = flag_data.get("context", "")
-                user_id = flag_data.get("user_id")
-                lecture_id = flag_data.get("lecture_id")
-                transcript_id = flag_data.get("transcript_id")
-                difficulty_level = flag_data.get("difficulty_level", 3)
-                
-                logger.info(f"Flagging concept: '{concept_name}' with context length: {len(context)}")
-                
-                # Get explanation for the flagged concept
-                logger.info("Calling gemini_service.explain_concept...")
-                result = await gemini_service.explain_concept(concept_name, context)
-                logger.info(f"Explanation result status: {result.get('status')}")
-                
-                # Save to database
-                if result and "explanation" in result:
-                    logger.info("Saving flagged concept to database...")
-                    try:
-                        await save_flagged_concept(
-                            concept_name=concept_name,
-                            explanation=result.get("explanation", ""),
-                            context=context,
-                            difficulty_level=difficulty_level,
-                            transcript_id=transcript_id,
-                            lecture_id=lecture_id,
-                            user_id=user_id
-                        )
-                        logger.info("Successfully saved flagged concept")
-                    except Exception as db_error:
-                        logger.error(f"Database error when saving flagged concept: {str(db_error)}")
-                else:
-                    logger.warning("No explanation returned from gemini_service")
-                
-                # Send the explanation back
-                logger.info("Sending explanation back to client...")
-                await websocket.send_json(result)
-                logger.info("Response sent successfully")
-            except json.JSONDecodeError as json_err:
-                logger.error(f"JSON parsing error: {str(json_err)}, Data: {data[:50]}...")
-                await websocket.send_json({
-                    "status": "error",
-                    "message": f"Invalid JSON: {str(json_err)}"
-                })
-            except Exception as processing_err:
-                logger.error(f"Error processing request: {str(processing_err)}")
-                await websocket.send_json({
-                    "status": "error",
-                    "message": f"Processing error: {str(processing_err)}"
-                })
+            await process_flag_request(websocket, data, auth_token)
             
     except WebSocketDisconnect as ws_disconnect:
         logger.info(f"WebSocket disconnected: {str(ws_disconnect)}")
@@ -321,6 +297,76 @@ async def flag_concept_websocket(websocket: WebSocket) -> None:
         logger.info("Closing flag_concept_websocket connection")
         if websocket.client_state == WebSocketState.CONNECTED:
             await websocket.close()
+
+async def process_flag_request(websocket: WebSocket, data: str, auth_token: Optional[str] = None) -> None:
+    """Process a concept flagging request within the websocket handler."""
+    try:
+        flag_data = json.loads(data)
+        logger.info(f"Parsed JSON data: {flag_data}")
+        
+        # If we have auth token, we could validate user here
+        user_id = flag_data.get("user_id")
+        if auth_token:
+            # TODO: Validate token and get user_id from token
+            # For now, we just log that we have a token
+            logger.info(f"Processing request with auth token for user_id: {user_id}")
+            
+        concept_name = flag_data.get("concept_name", "")
+        context = flag_data.get("context", "")
+        lecture_id = flag_data.get("lecture_id")
+        transcript_id = flag_data.get("transcript_id")
+        difficulty_level = flag_data.get("difficulty_level", 3)
+        
+        if not concept_name or not context:
+            logger.warning("Missing required fields: concept_name or context")
+            await websocket.send_json({
+                "status": "error", 
+                "message": "Missing required fields: concept_name and context must be provided"
+            })
+            return
+            
+        logger.info(f"Flagging concept: '{concept_name}' with context length: {len(context)}")
+        
+        # Get explanation for the flagged concept
+        logger.info("Calling gemini_service.explain_concept...")
+        result = await gemini_service.explain_concept(concept_name, context)
+        logger.info(f"Explanation result status: {result.get('status')}")
+        
+        # Save to database
+        if result and "explanation" in result:
+            logger.info("Saving flagged concept to database...")
+            try:
+                await save_flagged_concept(
+                    concept_name=concept_name,
+                    explanation=result.get("explanation", ""),
+                    context=context,
+                    difficulty_level=difficulty_level,
+                    transcript_id=transcript_id,
+                    lecture_id=lecture_id,
+                    user_id=user_id
+                )
+                logger.info("Successfully saved flagged concept")
+            except Exception as db_error:
+                logger.error(f"Database error when saving flagged concept: {str(db_error)}")
+        else:
+            logger.warning("No explanation returned from gemini_service")
+        
+        # Send the explanation back
+        logger.info("Sending explanation back to client...")
+        await websocket.send_json(result)
+        logger.info("Response sent successfully")
+    except json.JSONDecodeError as json_err:
+        logger.error(f"JSON parsing error: {str(json_err)}, Data: {data[:50]}...")
+        await websocket.send_json({
+            "status": "error",
+            "message": f"Invalid JSON: {str(json_err)}"
+        })
+    except Exception as processing_err:
+        logger.error(f"Error processing request: {str(processing_err)}")
+        await websocket.send_json({
+            "status": "error",
+            "message": f"Processing error: {str(processing_err)}"
+        })
 
 async def flagged_history_websocket(websocket: WebSocket) -> None:
     await websocket.accept()

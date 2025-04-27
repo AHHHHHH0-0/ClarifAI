@@ -66,27 +66,65 @@ export const useConceptFlag = ({
       webSocket.close();
     }
 
-    // Determine if we're in a development or production environment
-    const isProduction = window.location.hostname !== "localhost";
+    // Get authentication token if available
+    const authToken = localStorage.getItem("token");
 
-    // In dev, use localhost; in prod use the current hostname
-    const wsHost = isProduction ? window.location.host : "localhost:8001";
+    // Determine correct WebSocket URL based on current environment
+    let wsUrl;
 
-    // Use secure WebSockets if the page was loaded over HTTPS
-    const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-
-    // Construct the WebSocket URL
-    const wsUrl = `${wsProtocol}//${wsHost}/ws/flag-concept`;
-
-    console.log(`Attempting to connect to WebSocket at: ${wsUrl}`);
+    // Check if we're running locally or in production
+    if (
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1"
+    ) {
+      // Local development - explicit port
+      wsUrl = `ws://localhost:8001/ws/flag-concept`;
+      console.log(
+        `Development environment detected, using WebSocket URL: ${wsUrl}`
+      );
+    } else {
+      // Production environment - use relative path
+      // This assumes backend and frontend are served from same domain
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const host = window.location.host; // Includes port if specified
+      wsUrl = `${protocol}//${host}/ws/flag-concept`;
+      console.log(
+        `Production environment detected, using WebSocket URL: ${wsUrl}`
+      );
+    }
 
     try {
+      console.log(`Attempting to connect to WebSocket at: ${wsUrl}`);
       const ws = new WebSocket(wsUrl);
 
+      // Add connection timeout
+      const connectionTimeout = window.setTimeout(() => {
+        if (ws.readyState !== WebSocket.OPEN) {
+          console.error("WebSocket connection timed out");
+          ws.close();
+          onError?.(
+            new Error(
+              "WebSocket connection timed out - server may be unreachable"
+            )
+          );
+        }
+      }, 5000);
+
       ws.onopen = () => {
-        console.log("WebSocket connection established");
+        console.log("✅ WebSocket connection established successfully");
+        window.clearTimeout(connectionTimeout);
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
+
+        // If we have auth token, send it immediately after connection
+        if (authToken) {
+          try {
+            ws.send(JSON.stringify({ auth_token: authToken }));
+            console.log("Sent authentication token to WebSocket");
+          } catch (authError) {
+            console.error("Failed to send auth token:", authError);
+          }
+        }
 
         // Clear any reconnect timeout
         if (reconnectTimeoutRef.current) {

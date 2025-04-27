@@ -27,13 +27,22 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Add CORS middleware
+# Add CORS middleware with explicit WebSocket support
+allowed_origins = [
+    "http://localhost:3000",       # Dev frontend
+    "https://localhost:3000",      # Dev frontend with HTTPS
+    "http://localhost:8001",       # Dev backend
+    "https://localhost:8001",      # Dev backend with HTTPS
+    "*",                          # Allow all origins (consider restricting in production)
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In production, restrict this to specific origins
+    allow_origins=allowed_origins,  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Add a custom middleware to add WebSocket CORS headers
