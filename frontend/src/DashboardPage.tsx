@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "./components/Layout/Sidebar";
+import { Routes, Route } from "react-router-dom";
 import {
   useConceptFlag,
   ConceptFlagData,
@@ -92,11 +93,11 @@ const DashboardPage: React.FC = () => {
       {/* Main content */}
       <main className="flex-1 flex flex-col relative">
         {/* Mode Switch */}
-        <div className="flex gap-0 mt-6 ml-8">
+        <div className="flex justify-end gap-0 mt-6 mr-8">
           <button
             className={`px-6 py-2 border border-border rounded-l-lg font-semibold transition-colors duration-200 ${
               mode === "student"
-                ? "bg-primary text-white border-primary"
+                ? "bg-indigo-600 text-white border-indigo-600"
                 : "bg-white text-text hover:bg-gray-50"
             }`}
             onClick={() => handleModeChange("student")}
@@ -106,7 +107,7 @@ const DashboardPage: React.FC = () => {
           <button
             className={`px-6 py-2 border border-border rounded-r-lg font-semibold transition-colors duration-200 ${
               mode === "teacher"
-                ? "bg-primary text-white border-primary"
+                ? "bg-indigo-600 text-white border-indigo-600"
                 : "bg-white text-text hover:bg-gray-50"
             }`}
             onClick={() => handleModeChange("teacher")}
@@ -119,46 +120,12 @@ const DashboardPage: React.FC = () => {
         {/* Bottom Center Controls */}
         <div className="absolute left-1/2 bottom-8 transform -translate-x-1/2 flex gap-6">
           <button
-            className={`${
-              !isConnected
-                ? "bg-gray-400 cursor-not-allowed"
-                : isLoading
-                ? "bg-gray-400"
-                : "bg-primary-light hover:bg-primary"
-            } text-white px-6 py-2 rounded-lg font-semibold shadow transition-colors duration-200 flex items-center`}
+            className="bg-indigo-500 hover:bg-indigo-600 text-white px-6 py-2 rounded-lg font-semibold shadow transition-colors duration-200"
             onClick={handleConfused}
             disabled={!isConnected || isLoading}
             title={!isConnected ? "Connecting to server..." : undefined}
           >
-            {!isConnected ? (
-              "Connecting..."
-            ) : isLoading ? (
-              <>
-                <svg
-                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                Getting Explanation...
-              </>
-            ) : (
-              "Ask for Clarification"
-            )}
+            Ask
           </button>
         </div>
       </main>
@@ -166,7 +133,7 @@ const DashboardPage: React.FC = () => {
       {/* Transcript Sidebar */}
       <aside className="w-80 bg-background border-l border-border flex flex-col">
         <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
-          <span className="inline-block w-6 h-6 bg-primary-light/10 rounded-full flex items-center justify-center text-primary font-bold">
+          <span className="inline-block w-6 h-6 bg-indigo-600/10 rounded-full flex items-center justify-center text-indigo-600 font-bold">
             T
           </span>
           <span className="font-heading font-bold text-text text-lg">

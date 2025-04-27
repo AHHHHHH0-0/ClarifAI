@@ -4,6 +4,7 @@ import LoginPage from './LoginPage';
 import HeroSection from './components/Hero/HeroSection';
 import DashboardPage from './DashboardPage';
 import TeachToLearn from './TeachToLearn';
+import Footer from 'components/Footer/Footer';
 
 function HomePage() {
   return (
@@ -27,6 +28,7 @@ function HomePage() {
         <HeroSection />
         {/* Add more sections below as needed */}
       </main>
+      <Footer />
     </div>
   );
 }
