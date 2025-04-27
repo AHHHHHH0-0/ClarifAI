@@ -1,12 +1,11 @@
-import React, { useState, useEffect } from 'react';
-import { useNavigate, Routes, Route } from 'react-router-dom';
-import Sidebar from './components/Layout/Sidebar';
-import AudioToTextRecorder from './components/AudioToTextRecorder';
-
-const API_BASE = 'http://localhost:8000/api';
+import React, { useState, useEffect } from "react";
+import { useNavigate, Routes, Route } from "react-router-dom";
+import Sidebar from "./components/Layout/Sidebar";
+import AudioToTextRecorder from "./components/AudioToTextRecorder";
+import { API_BASE, getAuthHeaders, fetchDebugToken } from "./utils/api";
 
 const DashboardPage: React.FC = () => {
-  const [mode, setMode] = useState<'student' | 'teacher'>('student');
+  const [mode, setMode] = useState<"student" | "teacher">("student");
   const [conversations, setConversations] = useState<any[]>([]);
   const [selectedConv, setSelectedConv] = useState<string | null>(null);
   const [transcript, setTranscript] = useState<string>("");
@@ -14,57 +13,87 @@ const DashboardPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // Fetch transcript list on load
+  // Fetch debug token if needed, then fetch transcripts
   useEffect(() => {
-    const fetchTranscripts = async () => {
-      try {
-        setLoading(true);
-        const token = localStorage.getItem('token');
-        const res = await fetch(`${API_BASE}/transcripts`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Failed to fetch transcripts');
-        const data = await res.json();
-        setConversations(data);
-        if (data.length > 0) {
-          setSelectedConv(data[0]._id);
-        }
-      } catch (err) {
-        setConversations([]);
-      } finally {
-        setLoading(false);
+    const init = async () => {
+      // Check if we have a token, if not, fetch a debug token (for development)
+      let token = localStorage.getItem("token");
+      if (!token) {
+        token = await fetchDebugToken();
       }
+
+      // Now fetch transcripts with the token
+      await fetchTranscripts(token);
     };
-    fetchTranscripts();
+
+    init();
   }, []);
+
+  // Fetch transcript list
+  const fetchTranscripts = async (token?: string | null) => {
+    try {
+      setLoading(true);
+      const res = await fetch(`${API_BASE}/transcripts`, {
+        method: "GET",
+        headers: {
+          ...getAuthHeaders(token || undefined),
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        credentials: "include",
+        mode: "cors",
+      });
+      if (!res.ok) throw new Error("Failed to fetch transcripts");
+      const data = await res.json();
+      setConversations(data);
+      if (data.length > 0) {
+        setSelectedConv(data[0]._id);
+      }
+    } catch (err) {
+      console.error("Error fetching transcripts:", err);
+      setConversations([]);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Fetch transcript details when selectedConv changes
   useEffect(() => {
     if (!selectedConv) return;
+
     const fetchTranscript = async () => {
       try {
         setLoading(true);
-        const token = localStorage.getItem('token');
+        const token = localStorage.getItem("token");
         const res = await fetch(`${API_BASE}/transcripts/${selectedConv}`, {
-          headers: { 'Authorization': `Bearer ${token}` }
+          method: "GET",
+          headers: {
+            ...getAuthHeaders(token || undefined),
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+          credentials: "include",
+          mode: "cors",
         });
-        if (!res.ok) throw new Error('Failed to fetch transcript');
+        if (!res.ok) throw new Error("Failed to fetch transcript");
         const data = await res.json();
         // Assume transcript is a string, split by lines for display
-        setTranscript(data.text.split('\n').join(' '));
+        setTranscript(data.text.split("\n").join(" "));
       } catch (err) {
+        console.error("Error fetching individual transcript:", err);
         setTranscript("");
       } finally {
         setLoading(false);
       }
     };
+
     fetchTranscript();
   }, [selectedConv]);
 
-  const handleModeChange = (newMode: 'student' | 'teacher') => {
+  const handleModeChange = (newMode: "student" | "teacher") => {
     setMode(newMode);
-    if (newMode === 'teacher') {
-      navigate('/teach-to-learn');
+    if (newMode === "teacher") {
+      navigate("/teach-to-learn");
     }
   };
 
@@ -73,20 +102,24 @@ const DashboardPage: React.FC = () => {
     setExplanation(null);
     setLoading(true);
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem("token") || undefined;
       const res = await fetch(`${API_BASE}/explain`, {
-        method: 'POST',
+        method: "POST",
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
+          ...getAuthHeaders(token),
+          "Content-Type": "application/json",
+          Accept: "application/json",
         },
-        body: JSON.stringify({ text: transcript })
+        credentials: "include",
+        mode: "cors",
+        body: JSON.stringify({ text: transcript }),
       });
-      if (!res.ok) throw new Error('Failed to get explanation');
+      if (!res.ok) throw new Error("Failed to get explanation");
       const data = await res.json();
-      setExplanation(data.explanation || 'No explanation available.');
+      setExplanation(data.explanation || "No explanation available.");
     } catch (err) {
-      setExplanation('Failed to get explanation.');
+      console.error("Error getting explanation:", err);
+      setExplanation("Failed to get explanation.");
     } finally {
       setLoading(false);
     }
@@ -94,15 +127,20 @@ const DashboardPage: React.FC = () => {
 
   // Accumulate transcript from AudioToTextRecorder
   const handleTranscript = (newTranscript: string) => {
-    setTranscript(prev => prev + (prev && !prev.endsWith(' ') ? ' ' : '') + newTranscript);
+    setTranscript(
+      (prev) => prev + (prev && !prev.endsWith(" ") ? " " : "") + newTranscript
+    );
   };
 
   return (
     <div className="flex h-screen bg-background-light">
       {/* Sidebar */}
-      <Sidebar 
-        conversations={conversations.map((conv) => ({ id: conv._id, name: conv.title || 'Untitled' }))}
-        selectedConv={selectedConv || ''}
+      <Sidebar
+        conversations={conversations.map((conv) => ({
+          id: conv._id,
+          name: conv.title || "Untitled",
+        }))}
+        selectedConv={selectedConv || ""}
         onConversationSelect={(id: string) => setSelectedConv(id)}
       />
 
@@ -124,9 +162,18 @@ const DashboardPage: React.FC = () => {
         {/* Gemini Explanation */}
         {explanation && (
           <div className="absolute left-1/2 bottom-24 transform -translate-x-1/2 bg-white border border-gray-200 rounded-lg shadow-lg p-6 max-w-xl w-full z-50">
-            <h2 className="font-bold text-lg mb-2 text-primary">Gemini Explanation</h2>
-            <div className="text-text-muted whitespace-pre-line">{explanation}</div>
-            <button className="mt-4 px-4 py-2 bg-primary text-white rounded" onClick={() => setExplanation(null)}>Close</button>
+            <h2 className="font-bold text-lg mb-2 text-primary">
+              Gemini Explanation
+            </h2>
+            <div className="text-text-muted whitespace-pre-line">
+              {explanation}
+            </div>
+            <button
+              className="mt-4 px-4 py-2 bg-primary text-white rounded"
+              onClick={() => setExplanation(null)}
+            >
+              Close
+            </button>
           </div>
         )}
       </main>
@@ -134,14 +181,22 @@ const DashboardPage: React.FC = () => {
       {/* Mode Switch beside transcript box (not within) */}
       <div className="fixed top-16 right-[500px] z-20 flex gap-0">
         <button
-          className={`px-6 py-2 border border-border rounded-l-lg font-semibold transition-colors duration-200 ${mode === 'student' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-text hover:bg-gray-50'}`}
-          onClick={() => handleModeChange('student')}
+          className={`px-6 py-2 border border-border rounded-l-lg font-semibold transition-colors duration-200 ${
+            mode === "student"
+              ? "bg-indigo-600 text-white border-indigo-600"
+              : "bg-white text-text hover:bg-gray-50"
+          }`}
+          onClick={() => handleModeChange("student")}
         >
           Student
         </button>
         <button
-          className={`px-6 py-2 border border-border rounded-r-lg font-semibold transition-colors duration-200 ${mode === 'teacher' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-text hover:bg-gray-50'}`}
-          onClick={() => handleModeChange('teacher')}
+          className={`px-6 py-2 border border-border rounded-r-lg font-semibold transition-colors duration-200 ${
+            mode === "teacher"
+              ? "bg-indigo-600 text-white border-indigo-600"
+              : "bg-white text-text hover:bg-gray-50"
+          }`}
+          onClick={() => handleModeChange("teacher")}
         >
           Teacher
         </button>
@@ -155,7 +210,9 @@ const DashboardPage: React.FC = () => {
             {transcript.trim().length > 0 ? (
               <div>{transcript}</div>
             ) : (
-              <span className="text-gray-400">Start speaking to see the transcript...</span>
+              <span className="text-gray-400">
+                Start speaking to see the transcript...
+              </span>
             )}
           </div>
         </div>
@@ -164,4 +221,4 @@ const DashboardPage: React.FC = () => {
   );
 };
 
-export default DashboardPage; 
+export default DashboardPage;

@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import Sidebar from "./components/Layout/Sidebar";
 import { auth } from "./firebase";
 import { speak } from "./utils/tts";
+import { fetchDebugToken } from "./utils/api";
 
 // State for lectures fetched from backend
 interface LectureItem {
@@ -42,25 +43,41 @@ const TeachToLearn: React.FC = () => {
 
   // Fetch lectures on mount
   useEffect(() => {
-    const ws = new WebSocket(WS_LECTURES_URL);
-    ws.onopen = () => {
-      const user = auth.currentUser;
-      if (user) ws.send(JSON.stringify({ user_id: user.uid }));
+    const init = async () => {
+      // Check if we have a token, if not, fetch a debug token (for development)
+      let token = localStorage.getItem("token");
+      if (!token) {
+        token = await fetchDebugToken();
+      }
+
+      // Add token query param if available
+      const wsUrl = token
+        ? `${WS_LECTURES_URL}?token=${token}`
+        : WS_LECTURES_URL;
+
+      const ws = new WebSocket(wsUrl);
+      ws.onopen = () => {
+        const user = auth.currentUser;
+        if (user) ws.send(JSON.stringify({ user_id: user.uid }));
+      };
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.status === "success" && data.lectures) {
+            const list = data.lectures.map((lec: any) => ({
+              id: lec.id,
+              name: lec.title,
+            }));
+            setLectures(list);
+            if (list.length) setSelectedConv(list[0].id);
+          }
+        } catch {}
+      };
+
+      return () => ws.close();
     };
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        if (data.status === "success" && data.lectures) {
-          const list = data.lectures.map((lec: any) => ({
-            id: lec.id,
-            name: lec.title,
-          }));
-          setLectures(list);
-          if (list.length) setSelectedConv(list[0].id);
-        }
-      } catch {}
-    };
-    return () => ws.close();
+
+    init();
   }, []);
 
   // Handle mode switch
