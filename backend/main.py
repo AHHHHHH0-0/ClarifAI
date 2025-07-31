@@ -182,7 +182,7 @@ async def verify_firebase_token(request: Request):
         decoded_token = id_token.verify_firebase_token(
             token, 
             requests.Request(), 
-            audience="clarifai-5f201"  # Your Firebase project ID
+            audience="clarifai-e09e0"  # Your Firebase project ID
         )
         return decoded_token
     except Exception as e:
