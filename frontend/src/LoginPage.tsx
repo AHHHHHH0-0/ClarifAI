@@ -6,7 +6,6 @@ import {
   createUserWithEmailAndPassword,
 } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
-import { GoogleLogin } from "@react-oauth/google";
 import { motion } from "framer-motion";
 import { API_BASE, getAuthHeaders } from "./utils/api";
 
@@ -92,16 +91,25 @@ const LoginPage: React.FC = () => {
     idToken: string;
   }) => {
     if (!user.email) return;
-    const res = await fetch(`${API_BASE}/users/from-firebase`, {
-      method: "POST",
-      headers: {
-        ...getAuthHeaders(user.idToken),
-      },
-      body: JSON.stringify({ email: user.email, name: user.name }),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.detail || "Failed to save user");
+    try {
+      const res = await fetch(`${API_BASE}/users/from-firebase`, {
+        method: "POST",
+        headers: {
+          ...getAuthHeaders(user.idToken),
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ email: user.email, name: user.name }),
+        mode: "cors",
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.detail || "Failed to save user");
+      }
+    } catch (error) {
+      console.error("Backend user creation failed:", error);
+      // Don't throw here, allow user to continue even if backend fails
     }
   };
 
@@ -120,7 +128,28 @@ const LoginPage: React.FC = () => {
       });
       window.location.href = "/dashboard";
     } catch (err: any) {
-      setError(err.message || "Google login failed");
+      console.error("Google login error:", err);
+      let userFriendlyMessage = "Google login failed. Please try again.";
+
+      if (err.code === "auth/unauthorized-domain") {
+        userFriendlyMessage =
+          "Authentication not configured for this domain. Please contact support or try again later.";
+        // In development, provide helpful guidance
+        if (process.env.NODE_ENV === "development") {
+          userFriendlyMessage +=
+            " (Development: Check Firebase Console > Authentication > Settings > Authorized domains)";
+        }
+      } else if (err.code === "auth/popup-blocked") {
+        userFriendlyMessage =
+          "Popup was blocked. Please allow popups for this site and try again.";
+      } else if (err.code === "auth/popup-closed-by-user") {
+        userFriendlyMessage = "Sign-in was cancelled. Please try again.";
+      } else if (err.code === "auth/network-request-failed") {
+        userFriendlyMessage =
+          "Network error. Please check your connection and try again.";
+      }
+
+      setError(userFriendlyMessage);
     } finally {
       setLoading(false);
     }
@@ -160,17 +189,32 @@ const LoginPage: React.FC = () => {
       );
       window.location.href = "/dashboard";
     } catch (err: any) {
-      if (err.code === "auth/user-not-found") {
-        setError("Account does not exist. Please sign up first.");
+      console.error("Email auth error:", err);
+      let userFriendlyMessage =
+        mode === "login" ? "Login failed" : "Signup failed";
+
+      if (
+        err.code === "auth/user-not-found" ||
+        err.code === "auth/invalid-credential"
+      ) {
+        userFriendlyMessage = "Account does not exist. Please sign up first.";
       } else if (err.code === "auth/wrong-password") {
-        setError("Incorrect password. Please try again.");
-      } else if (err.code === "auth/invalid-credential") {
-        setError("Account does not exist. Please sign up first.");
-      } else {
-        setError(
-          err.message || (mode === "login" ? "Login failed" : "Signup failed")
-        );
+        userFriendlyMessage = "Incorrect password. Please try again.";
+      } else if (err.code === "auth/email-already-in-use") {
+        userFriendlyMessage =
+          "Email already in use. Please try logging in instead.";
+      } else if (err.code === "auth/weak-password") {
+        userFriendlyMessage =
+          "Password is too weak. Please choose a stronger password.";
+      } else if (err.code === "auth/invalid-email") {
+        userFriendlyMessage =
+          "Invalid email address. Please check and try again.";
+      } else if (err.code === "auth/unauthorized-domain") {
+        userFriendlyMessage =
+          "Authentication not configured for this domain. Please contact support.";
       }
+
+      setError(userFriendlyMessage);
     } finally {
       setLoading(false);
     }
@@ -266,16 +310,21 @@ const LoginPage: React.FC = () => {
           <div className="flex gap-2 mb-4">
             <button
               type="submit"
-              className="flex-1 bg-[#818CF8] hover:bg-[#6366F1] text-white py-3 px-6 rounded-lg font-semibold transition-colors duration-200"
+              className="flex-1 bg-[#818CF8] hover:bg-[#6366F1] text-white py-3 px-6 rounded-lg font-semibold transition-colors duration-200 disabled:opacity-50"
+              disabled={loading}
             >
-              Login <span className="ml-1">→</span>
+              {loading
+                ? "Processing..."
+                : `${mode === "login" ? "Login" : "Sign Up"}`}
+              {!loading && <span className="ml-1">→</span>}
             </button>
             <button
               type="button"
-              className="flex-1 bg-[#C4B5FD] hover:bg-[#A78BFA] text-white py-3 px-6 rounded-lg font-semibold transition-colors duration-200"
-              onClick={() => alert("Create Account not implemented.")}
+              className="flex-1 bg-[#C4B5FD] hover:bg-[#A78BFA] text-white py-3 px-6 rounded-lg font-semibold transition-colors duration-200 disabled:opacity-50"
+              onClick={() => setMode(mode === "login" ? "signup" : "login")}
+              disabled={loading}
             >
-              Create Account
+              {mode === "login" ? "Create Account" : "Login Instead"}
             </button>
           </div>
           <div className="text-center mt-2">
@@ -284,18 +333,6 @@ const LoginPage: React.FC = () => {
             </a>
           </div>
         </form>
-        <div className="text-center mt-2">
-          <button
-            type="button"
-            className="text-blue-500 hover:underline text-sm"
-            onClick={() => setMode(mode === "login" ? "signup" : "login")}
-            disabled={loading}
-          >
-            {mode === "login"
-              ? "Don't have an account? Create one"
-              : "Already have an account? Login"}
-          </button>
-        </div>
       </div>
     </div>
   );
